@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lime_internal_getter"
+version = "0.0.6"
+authors = [
+  { name="Harisankar Suresh", email="harisankar.suresh@lime.ai" },
+]
+description = "Wrapper project of plotly.py, extra functionalities for scientific plots"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+    "pandas>=2.0.3",
+]
+
+[project.urls]
+Homepage = "https://gitlab.com/harisankar99/lime_internal_getter"
+Issues = "https://gitlab.com/harisankar99/lime_internal_getter/issues"
+
+[tool.ruff]
+line-length = 80  # Customize based on your project
+lint.ignore = ["F401"]
