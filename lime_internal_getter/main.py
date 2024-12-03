@@ -7,7 +7,7 @@ from datetime import timedelta, date
 import numpy as np
 
 home = os.path.expanduser("~")
-filename = ".ligrcw"
+filename = ".ligrc"
 path = os.path.join(home, filename)
 try:
     with open(path, "r") as file:
