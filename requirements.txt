@@ -4,3 +4,5 @@ io
 datetime
 json
 ruff
+tqdm
+plotly

@@ -3,9 +3,12 @@ import io
 import concurrent.futures
 import os
 import requests
+import subprocess
 import pandas as pd
 from datetime import timedelta, date
 import numpy as np
+import plotly.graph_objects as go
+from tqdm.notebook import tqdm
 
 home = os.path.expanduser("~")
 filename = ".ligrc"
@@ -138,6 +141,7 @@ def get_pimdata(
     serial_no=False,
     interpolation=True,
     period=0.1,
+    nas=True,
 ):
     """
     Function to get data from IoT dashboard for Local PIM testing
@@ -146,9 +150,17 @@ def get_pimdata(
     odf = ig.get_extdata(*("MD0AIOALAA00638", '2024-10-25 14:30', '2024-10-26 02:17'))
     ```
     """
-    df = get_data(
-        IMEI, start_time, end_time, filter_data=filter_data, serial_no=serial_no
-    )
+    if nas:
+        df = get_data(
+            IMEI,
+            start_time,
+            end_time,
+            filter_data=filter_data,
+            serial_no=serial_no,
+        )
+        df["timeStamp"] = df["date"] + " " + df["time"]
+    else:
+        df = get_extdata(IMEI, start_time, end_time, filter_data=filter_data)
     df["Time diff"] = (
         (pd.to_datetime(df["timeStamp"]).astype("int64") / 10**9)
         .diff()
@@ -389,3 +401,141 @@ def get_data(
         filter_datas(df, start_time, end_time)
 
     return df.reset_index(drop=True)
+
+
+class BatterySOXProcessor:
+    def __init__(self, directory_path):
+        self.directory_path = directory_path
+        self.fdf = None
+        self.final_table = None
+
+    def fetch_and_process_data(
+        self, serial_numbers, start_date, end_date, checker="oh"
+    ):
+        k = 0
+        original_directory = os.getcwd()
+
+        for ser in tqdm(serial_numbers, desc="Processing Serial Numbers"):
+            params = (ser, start_date, end_date)
+
+            try:
+                # Fetch IoT data and save as CSV
+                get_pimdata(
+                    params[0], params[1], params[2], nas=False, serial_no=True
+                ).to_csv(
+                    f"{self.directory_path}/input_data/drive_cycle_iot_data.csv",
+                    index=False,
+                    header=None,
+                )
+            except Exception as e:
+                print(f"Error fetching IoT data for {ser}: {e}")
+                continue
+
+            try:
+                # Change to directory and run make command
+                os.chdir(self.directory_path)
+                subprocess.run(
+                    ["make"], check=True, text=True, capture_output=True
+                )
+            except subprocess.CalledProcessError as e:
+                print(f"Error running make for {ser}: {e.stderr}")
+                continue
+            finally:
+                # Change back to the original directory
+                os.chdir(original_directory)
+
+            try:
+                df = get_extdata(params[0], params[1], params[2])
+            except Exception as e:
+                print(f"Error fetching extended data for {ser}: {e}")
+                continue
+
+            df["Time diff"] = (
+                (pd.to_datetime(df["timeStamp"]).astype("int64") / 10**9)
+                .diff()
+                .fillna(0)
+            )
+
+            df["Cumulative Time"] = df["Time diff"].cumsum().fillna(0)
+            time_data = pd.to_datetime(df["timeStamp"]).astype("int64") / 10**9
+
+            odf = pd.read_csv(
+                f"{self.directory_path}/output_data/final_s{checker}_iot_data.csv",
+                header=None,
+            )
+
+            maxx = odf.iloc[:, 1:].max(axis=1)
+            minn = odf.iloc[:, 1:].min(axis=1)
+
+            df[f"PIM_S{checker}"] = np.interp(
+                df["Cumulative Time"], odf[0], odf[3]
+            )
+            df[f"PIM_maxS{checker}"] = np.interp(
+                df["Cumulative Time"], odf[0], maxx
+            )
+            df[f"PIM_minS{checker}"] = np.interp(
+                df["Cumulative Time"], odf[0], minn
+            )
+
+            df["Cumulative Time"] = pd.to_datetime(time_data, unit="s")
+            df["Serial_no"] = ser
+
+            if k > 0:
+                self.fdf = pd.concat([self.fdf, df])
+            else:
+                self.fdf = df
+                k += 1
+
+    def generate_final_table(self, checker):
+        self.final_table = None
+        k = 0
+
+        for ser in tqdm(
+            self.fdf["Serial_no"].unique(), desc="Generating Final Table"
+        ):
+            table = self.fdf[self.fdf["Serial_no"] == ser][:-2:-1].copy()
+
+            for col in [col for col in table.columns if "PIM_" in col]:
+                table[col] *= 100
+
+            soh_cols = [
+                col
+                for col in table.columns
+                if checker in col and "Raw" not in col and "reserve" not in col
+            ]
+
+            if k == 0:
+                self.final_table = table[soh_cols]
+                k += 1
+            else:
+                self.final_table = pd.concat(
+                    [self.final_table, table[soh_cols]]
+                )
+
+    def plot_soh(self, checker):
+        soh_cols = [
+            col
+            for col in self.fdf.columns
+            if checker in col and "Raw" not in col and "reserve" not in col
+        ]
+
+        for ser in self.fdf["Serial_no"].unique():
+            table = self.fdf[self.fdf["Serial_no"] == ser].copy()
+
+            for col in [col for col in table.columns if "PIM_" in col]:
+                table[col] *= 100
+
+            table_data = table[soh_cols]
+
+            fig = go.Figure(layout=dict(title=f"SOH Comparison for {ser}"))
+
+            for tcol in table_data.columns:
+                fig.add_trace(
+                    go.Scatter(
+                        x=table["Cumulative Time"],
+                        y=table_data[tcol],
+                        name=tcol,
+                    )
+                )
+
+            fig.show(renderer="browser")
