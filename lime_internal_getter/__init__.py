@@ -6,6 +6,6 @@ from lime_internal_getter.main import (
     get_fwdata,
     authenticate,
     adjust_end_date,
-    filter_data,
+    filter_datas,
     get_data,
 )
