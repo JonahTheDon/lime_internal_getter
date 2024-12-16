@@ -130,7 +130,15 @@ def get_extdata(IMEI, start_time, end_time, filter_data=False):
         raise ValueError("Cannot Form Dataframe")
 
 
-def get_pimdata(IMEI, start_time, end_time, filter_data=False, serial_no=False):
+def get_pimdata(
+    IMEI,
+    start_time,
+    end_time,
+    filter_data=False,
+    serial_no=False,
+    interpolation=True,
+    period=0.1,
+):
     """
     Function to get data from IoT dashboard for Local PIM testing
     ```
@@ -148,18 +156,24 @@ def get_pimdata(IMEI, start_time, end_time, filter_data=False, serial_no=False):
     )
     df["Cumulative Time"] = df["Time diff"].cumsum().fillna(0)
     col_names = [col for col in df.columns if "Volt" in col and "cell" in col]
-    time = np.arange(0, df["Cumulative Time"].iloc[-1], 0.1)
-    data = [
-        pd.Series(time),
-        pd.Series(np.interp(time, df["Cumulative Time"], df["batCurrent"])),
-    ]
-    for col in col_names:
-        if not (df[col].eq(0).all()):
-            data.append(
-                pd.Series(
-                    np.interp(time, df["Cumulative Time"], df[col] / 1000)
+    if interpolation:
+        time = np.arange(0, df["Cumulative Time"].iloc[-1], period)
+        data = [
+            pd.Series(time),
+            pd.Series(np.interp(time, df["Cumulative Time"], df["batCurrent"])),
+        ]
+        for col in col_names:
+            if not (df[col].eq(0).all()):
+                data.append(
+                    pd.Series(
+                        np.interp(time, df["Cumulative Time"], df[col] / 1000)
+                    )
                 )
-            )
+    else:
+        data = [df["Cumulative Time"], df["batCurrent"]]
+        for col in col_names:
+            if not (df[col].eq(0).all()):
+                data.append(df[col] / 1000)
     return pd.DataFrame(data).T
 
 
