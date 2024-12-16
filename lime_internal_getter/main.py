@@ -56,22 +56,23 @@ def get_imei(IMEI):
         raise ValueError("get_imei error: ", e)
 
 
-def get_dates(start_year, start_month, start_day, end_year, end_month, end_day):
+def get_dates(start_date1, end_date1):
     """
     Returns a list of dates between the start and end dates, inclusive.
 
     Parameters:
-    - start_year: The year of the start date
-    - start_month: The month of the start date
-    - start_day: The day of the start date
-    - end_year: The year of the end date
-    - end_month: The month of the end date
-    =9i07u890
-        - end_day: The day of the end date
+    - start_date1: starting date
+    - end_date1: ending date
 
     Returns:
     - List of date strings in the format 'YYYY-MM-DD'
     """
+    start_day = int(start_date1.split("-")[2].strip())
+    start_month = int(start_date1.split("-")[1].strip())
+    start_year = int(start_date1.split("-")[0].strip())
+    end_day = int(end_date1.split("-")[2].strip())
+    end_month = int(end_date1.split("-")[1].strip())
+    end_year = int(end_date1.split("-")[0].strip())
     # Convert start and end dates to datetime objects
     start_date = date((start_year), (start_month), (start_day))
     end_date = date((end_year), (end_month), (end_day))
