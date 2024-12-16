@@ -1,8 +1,9 @@
-import requests
-import os
 import json
-import pandas as pd
 import io
+import concurrent.futures
+import os
+import requests
+import pandas as pd
 from datetime import timedelta, date
 import numpy as np
 
@@ -35,39 +36,24 @@ login_params = {
 
 def get_imei(IMEI):
     """
-    Function to import data from dashboard
+    Function to get_imei from dashboard
     ```
     import correction_monitor as cm
-    odf = cm.get_data(*("MD0AIOALAA00638", "2024-06-27", "2024-06-28"))
+    eg: imei=get_imei("MD0AIOALAA00638")
     ```
     """
     headers = headers = {
         "Authorization": f"{auth_key}",
         "Content-Type": "application/json",
     }
-    formatted_date = pd.to_datetime("today").strftime("%Y-%m-%d")
-    start_d, end_d = formatted_date, formatted_date
-    payload = json.dumps({"imei": IMEI, "startDate": start_d, "endDate": end_d})
-    key = False
-    day_count = 0
-    while key is False:
-        response = requests.post(
-            "https://api-stage.lime.ai/lime/iotData",
-            headers=headers,
-            data=payload,
-        )
-        try:
-            result = json.loads(response.content)["result"][0]["imei"]
-            key = True
-            return result
-        except Exception as e:
-            print("Error: ", e)
-            formatted_date = pd.to_datetime(
-                formatted_date, format="%Y-%m-%d"
-            ) - pd.Timedelta(days=1)
-            day_count += 1
-            if day_count > 420:
-                raise ValueError("Can't get IMEI")
+    response = requests.get(
+        f"https://api-stage.lime.ai/lime/liveBatteryDashboard/{IMEI}",
+        headers=headers,
+    )
+    try:
+        return json.loads(response.content)["result"][0]["imei"]
+    except Exception as e:
+        raise ValueError("get_imei error: ", e)
 
 
 def get_dates(start_year, start_month, start_day, end_year, end_month, end_day):
@@ -294,7 +280,7 @@ def adjust_end_date(end_date: str) -> str:
     return end_date_parsed.strftime("%Y-%m-%d")
 
 
-def filter_data(df, start_time, end_time):
+def filter_datas(df, start_time, end_time):
     """
     This filters data from start time to end time
     ## Example Usage ##
@@ -307,70 +293,84 @@ def filter_data(df, start_time, end_time):
     )
 
 
-def get_data(imei, start_time, end_time, serial_no=False, filter_data=False):
+def get_data(
+    imei, start_time, end_time, serial_no=False, filter_data=False, skip=False
+):
     """
     Use for getting battery data from NAS storage eg:
-    df= get_data("MD0AIOALAA00638", '2024-10-25 14:30', '2024-10-26 02:17',filter_data=True,serial number =True)
+    df = get_data("MD0AIOALAA00638", '2024-10-25 14:30', '2024-10-26 02:17', filter_data=True, serial_no=True)
     """
     start_date = start_time.split(" ")[0]
     end_date = end_time.split(" ")[0]
-    if serial_no is True:
+
+    if serial_no:
         try:
             imei = get_imei(imei)
-        except Exception as e:
-            print("Error: ", e)
+        except Exception:
             raise ValueError("Can't get IMEI")
+
     end_date = adjust_end_date(end_date)
+
     sid = authenticate()
     if not sid:
         print("Exiting due to authentication failure.")
         raise ValueError("Authentication Failure")
-    start_day = int(start_date.split("-")[2].strip())
-    start_month = int(start_date.split("-")[1].strip())
-    start_year = int(start_date.split("-")[0].strip())
-    end_day = int(end_date.split("-")[2].strip())
-    end_month = int(end_date.split("-")[1].strip())
-    end_year = int(end_date.split("-")[0].strip())
-    dates = pd.DataFrame(
-        pd.to_datetime(
-            get_dates(
-                start_year, start_month, start_day, end_year, end_month, end_day
-            )
-        ),
-        columns=["timestamp"],
-    )
-    # Extract date, month, and year as separate strings
-    dates["date"] = dates["timestamp"].dt.strftime("%d")
-    dates["month"] = dates["timestamp"].dt.strftime("%m")
-    dates["year"] = dates["timestamp"].dt.strftime("%Y")
-    kdf = 0
-    for _date in range(dates.shape[0]):
-        year, month, day = (
-            dates["year"].iloc[_date],
-            dates["month"].iloc[_date],
-            dates["date"].iloc[_date],
+
+    # Get dates and ensure they are sorted
+    dates = pd.to_datetime(get_dates(start_date, end_date))
+    dates = dates.sort_values()
+
+    # Precompute date components to minimize repeated operations
+    date_components = [
+        (
+            d.strftime("%Y"),
+            d.strftime("%m").lstrip("0"),
+            d.strftime("%d").lstrip("0"),
+            d.strftime("%Y%m%d"),
         )
-        file_date = year + month + day
-        month_lstrip = month.lstrip("0")
-        day_lstrip = day.lstrip("0")
+        for d in dates
+    ]
+
+    def read_file_wrapper(args):
+        """Wrapper function for reading files in parallel."""
+        year, month_lstrip, day_lstrip, file_date = args
         try:
-            idf = read_file_in_memory(
-                sid, imei, year, month_lstrip, day_lstrip, file_date
+            return (
+                file_date,
+                read_file_in_memory(
+                    sid, imei, year, month_lstrip, day_lstrip, file_date
+                ),
             )
-            if kdf == 0:
-                df = idf
-            kdf += 1
         except Exception:
-            continue
-            raise ValueError(
-                f"Issue getting data for the {dates['timestamp'][_date]}"
-            )
-        try:
-            if kdf > 0 and df is not None:
-                df = pd.concat([df, idf])
-        except Exception as e:
-            raise ValueError("Error: ", e)
-            # continue
-    if filter_data is True:
-        filter_data(df, start_time, end_time)
+            if skip:
+                return None
+            else:
+                raise ValueError(f"Issue getting data for the date {file_date}")
+
+    # Use ThreadPoolExecutor for parallel file reading
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = [
+            executor.submit(read_file_wrapper, components)
+            for components in date_components
+        ]
+        results = []
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                if future.result():
+                    results.append(future.result())
+            except Exception as e:
+                raise e
+
+    # Sort results by file_date to maintain order
+    results.sort(key=lambda x: x[0])
+
+    # Extract data frames in the correct order
+    data_frames = [result[1] for result in results]
+
+    # Concatenate all data frames in order
+    df = pd.concat(data_frames, ignore_index=True)
+
+    if filter_data:
+        filter_datas(df, start_time, end_time)
+
     return df.reset_index(drop=True)
