@@ -1,4 +1,4 @@
-# PIMProcessor and Data Handling Documentation
+# Lime Internal Getter - A Data Handling library for Lime.ai Documentation
 
 This document serves as a detailed guide to understand and utilize the provided code for IoT battery data extraction, processing, and modeling using PIMProcessor. 
 
