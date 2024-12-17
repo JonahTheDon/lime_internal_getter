@@ -8,5 +8,6 @@ from lime_internal_getter.main import (
     adjust_end_date,
     filter_datas,
     get_data,
-    BatterySOXProcessor,
+    pim_make,
+    PIMProcessor,
 )

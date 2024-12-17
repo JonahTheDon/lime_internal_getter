@@ -403,25 +403,58 @@ def get_data(
     return df.reset_index(drop=True)
 
 
-class BatterySOXProcessor:
+def pim_make(directory_path):
+    """
+    Use this for running the pim after setting configuration inside C code.
+    Make sure for temporary testing edit the line no 8 in main.c as
+      char *extend = "_iot_data.csv";
+      Set appropriate model type in model.h and run pim_make(directory_path)
+    """
+    original_directory = os.getcwd()
+    try:
+        # Change to directory and run make command
+        os.chdir(directory_path)
+        subprocess.run(["make"], check=True, text=True, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Error running make: {e.stderr}")
+    finally:
+        # Change back to the original directory
+        os.chdir(original_directory)
+
+
+class PIMProcessor:
+    """
+    Use this for processing pim model and generating tables for Abhishek
+    for list of battery serial numbers.
+    ## Functionalities ##
+    fetch_and_process_data(
+    serial_numbers, start_date, end_date, checker="oh",nas=False
+    )
+    This function processes all data in list of serial numbers of battery
+    and gives an variable accessible through name 'fdf' which has battery
+    data including PIM.
+    checker: This functionality is for checking SOC : checker='oc' and SOH: checker='oh'
+    generate_final_table(checker): generates final table accessible through processor.final_table variable
+    plot_soh(checker): gives the final plot of soh comparison for packs
+
+    """
+
     def __init__(self, directory_path):
         self.directory_path = directory_path
         self.fdf = None
         self.final_table = None
 
     def fetch_and_process_data(
-        self, serial_numbers, start_date, end_date, checker="oh"
+        self, serial_numbers, start_date, end_date, checker="oh", nas=False
     ):
         k = 0
-        original_directory = os.getcwd()
-
         for ser in tqdm(serial_numbers, desc="Processing Serial Numbers"):
             params = (ser, start_date, end_date)
 
             try:
                 # Fetch IoT data and save as CSV
                 get_pimdata(
-                    params[0], params[1], params[2], nas=False, serial_no=True
+                    params[0], params[1], params[2], nas=nas, serial_no=True
                 ).to_csv(
                     f"{self.directory_path}/input_data/drive_cycle_iot_data.csv",
                     index=False,
@@ -432,20 +465,16 @@ class BatterySOXProcessor:
                 continue
 
             try:
-                # Change to directory and run make command
-                os.chdir(self.directory_path)
-                subprocess.run(
-                    ["make"], check=True, text=True, capture_output=True
-                )
+                pim_make(self.directory_path)
             except subprocess.CalledProcessError as e:
                 print(f"Error running make for {ser}: {e.stderr}")
                 continue
-            finally:
-                # Change back to the original directory
-                os.chdir(original_directory)
 
             try:
-                df = get_extdata(params[0], params[1], params[2])
+                if nas:
+                    df = get_data(params[0], params[1], params[2])
+                else:
+                    df = get_extdata(params[0], params[1], params[2])
             except Exception as e:
                 print(f"Error fetching extended data for {ser}: {e}")
                 continue
