@@ -1,203 +1,215 @@
-# Lime Internal Getter - A Data Handling library for Lime.ai Documentation
+# lime_internal_getter- A Data Handling Library for Lime.ai Documentation
 
-This document serves as a detailed guide to understand and utilize the provided code for IoT battery data extraction, processing, and modeling using PIMProcessor. 
-
----
-
-## **Overview**
-
-The code includes multiple functions and a class `PIMProcessor` for:
-1. Fetching IoT battery data.
-2. Processing the data into usable formats.
-3. Generating final tables for SoC and SoH comparison.
-4. Running PIM models using provided directory paths and configurations.
+## Overview
+This document provides a description of the functions defined in the `init.py` file. The functions facilitate various operations including data fetching, IoT dashboard integration, data filtering, and process execution.
 
 ---
 
-## **Authentication**
+## Functions
 
-The code authenticates via the `.ligrc` file stored in the home directory. Ensure the following:
-- The file `.ligrc` contains `auth_key==<your_auth_key>`.
-- Authentication enables access to APIs for retrieving and processing IoT data.
+### 1. **get_imei**
+**Description:** Retrieves the IMEI of a battery pack from the Lime.ai dashboard.
 
----
+**Parameters:**
+- `IMEI` (str): The IMEI string of the device.
 
-## **Function Descriptions**
+**Returns:**
+- IMEI (str): Retrieved IMEI of the battery pack.
 
-### `get_imei(IMEI)`
-Fetches the IMEI from the dashboard.
-
-#### Parameters:
-- `IMEI`: IMEI code of the battery.
-
-#### Returns:
-- The IMEI string.
-
-### `get_dates(start_date1, end_date1)`
-Generates a list of dates between `start_date1` and `end_date1`.
-
-#### Parameters:
-- `start_date1`: Starting date.
-- `end_date1`: Ending date.
-
-#### Returns:
-- List of dates in `YYYY-MM-DD` format.
-
-### `get_extdata(IMEI, start_time, end_time, filter_data=False)`
-Fetches external IoT data.
-
-#### Parameters:
-- `IMEI`: IMEI code of the battery.
-- `start_time`: Start timestamp.
-- `end_time`: End timestamp.
-- `filter_data`: (Optional) Boolean to filter data by timestamps.
-
-#### Returns:
-- DataFrame containing IoT data.
-
-### `get_pimdata()`
-Processes IoT dashboard data for Local PIM testing.
-
-#### Parameters:
-- `IMEI`, `start_time`, `end_time`, `filter_data`, `serial_no`, `interpolation`, `period`, `nas`.
-
-#### Returns:
-- Processed DataFrame with interpolated voltage and current data.
-
-### `get_fwdata(fWVersion, battery_prefix)`
-Fetches packs with specific firmware versions.
-
-#### Parameters:
-- `fWVersion`: Firmware version string.
-- `battery_prefix`: Battery prefix string.
-
-#### Returns:
-- DataFrame with firmware-specific data.
-
-### `authenticate()`
-Authenticates and returns a session ID.
-
-#### Returns:
-- Session ID string.
-
-### `read_file_in_memory(sid, imei, year, month, day, file_date)`
-Reads a `.parquet` file from the NAS storage into memory.
-
-#### Parameters:
-- `sid`: Session ID.
-- `imei`, `year`, `month`, `day`, `file_date`: File location parameters.
-
-#### Returns:
-- DataFrame with file data.
-
-### `adjust_end_date(end_date)`
-Adjusts the end date if it exceeds today.
-
-#### Parameters:
-- `end_date`: Input end date string.
-
-#### Returns:
-- Adjusted end date string.
-
-### `filter_datas(df, start_time, end_time)`
-Filters a DataFrame between `start_time` and `end_time`.
-
-#### Parameters:
-- `df`: DataFrame to filter.
-- `start_time`, `end_time`: Timestamp strings.
-
-#### Returns:
-- Filtered DataFrame.
-
-### `get_data(imei, start_time, end_time, serial_no=False, filter_data=False, skip=False)`
-Fetches and combines battery data from NAS storage.
-
-#### Parameters:
-- `imei`, `start_time`, `end_time`.
-- `serial_no`, `filter_data`, `skip`.
-
-#### Returns:
-- Combined DataFrame.
-
-### `pim_make(directory_path)`
-Runs PIM models by invoking the `make` command.
-
-#### Parameters:
-- `directory_path`: Path to the directory containing the code.
-
----
-
-## **Class: PIMProcessor**
-
-Processes PIM models and generates tables for SoC and SoH comparisons.
-
-### **Methods**
-
-#### `__init__(directory_path)`
-Initializes the PIMProcessor with a directory path.
-
-#### `fetch_and_process_data(serial_numbers, start_date, end_date, checker="oh", nas=False)`
-Processes IoT data for multiple serial numbers.
-
-#### Parameters:
-- `serial_numbers`: List of serial numbers.
-- `start_date`, `end_date`: Date range for processing.
-- `checker`: Specifies SoC (`'oc'`) or SoH (`'oh'`).
-- `nas`: Boolean for data source (NAS or external).
-
-#### `generate_final_table(checker)`
-Generates a final table for SoC or SoH.
-
-#### `plot_soh(checker)`
-Plots SoH comparisons for multiple packs.
-
----
-
-## **Example Usages**
-
-### 1. **Fetch IMEI Data**
+**Example Usage:**
 ```python
 imei = get_imei("MD0AIOALAA00638")
 ```
 
-### 2. **Get IoT Data**
-```python
-odf = get_extdata("MD0AIOALAA00638", "2024-06-27", "2024-06-28")
-```
+---
 
-### 3. **Run PIM Make Command**
-```python
-pim_make("/path/to/directory")
-```
+### 2. **get_dates**
+**Description:** Returns a list of dates between the given start and end dates.
 
-### 4. **Process PIM Data**
+**Parameters:**
+- `start_date1` (str): Start date in `YYYY-MM-DD` format.
+- `end_date1` (str): End date in `YYYY-MM-DD` format.
+
+**Returns:**
+- List of date strings in `YYYY-MM-DD` format.
+
+**Example Usage:**
 ```python
-processor = PIMProcessor("/path/to/directory")
-processor.fetch_and_process_data(
-    serial_numbers=["MD0AIOALAA00638"],
-    start_date="2024-10-25",
-    end_date="2024-10-26",
-    checker="oh",
-    nas=False
-)
-processor.generate_final_table(checker="oh")
-processor.plot_soh(checker="oh")
+dates = get_dates("2024-06-27", "2024-06-28")
 ```
 
 ---
 
-## **Dependencies**
+### 3. **get_extdata**
+**Description:** Imports data from the Lime.ai IoT dashboard.
 
-- Python 3.6+
-- Libraries: `json`, `io`, `concurrent.futures`, `os`, `requests`, `subprocess`, `pandas`, `numpy`, `plotly`, `tqdm`.
+**Parameters:**
+- `IMEI` (str): IMEI of the device.
+- `start_time` (str): Start time in `YYYY-MM-DD HH:MM` format.
+- `end_time` (str): End time in `YYYY-MM-DD HH:MM` format.
+- `filter_data` (bool): Whether to filter data within the provided time range. Default is `False`.
+
+**Returns:**
+- DataFrame: A pandas DataFrame containing the fetched data.
+
+**Example Usage:**
+```python
+data = get_extdata("MD0AIOALAA00638", "2024-06-27", "2024-06-28")
+```
 
 ---
 
-## **Notes**
-- Ensure correct configurations in `.ligrc` for authentication.
-- Use proper directory structure for PIM modeling.
-- Handle exceptions for missing or invalid files while fetching NAS data.
+### 4. **get_pimdata**
+**Description:** Retrieves and processes IoT dashboard data for Local PIM testing.
+
+**Parameters:**
+- `IMEI` (str): IMEI of the device.
+- `start_time` (str): Start time in `YYYY-MM-DD HH:MM` format.
+- `end_time` (str): End time in `YYYY-MM-DD HH:MM` format.
+- `filter_data` (bool): Whether to filter data. Default is `False`.
+- `serial_no` (bool): Whether the input is a serial number. Default is `False`.
+- `interpolation` (bool): Whether to interpolate data. Default is `True`.
+- `period` (float): Interpolation period in seconds. Default is `0.1`.
+- `nas` (bool): Use NAS storage if `True`. Default is `True`.
+
+**Returns:**
+- DataFrame: A pandas DataFrame containing processed data.
+
+**Example Usage:**
+```python
+pim_data = get_pimdata("MD0AIOALAA00638", "2024-10-25 14:30", "2024-10-26 02:17")
+```
 
 ---
 
-### For queries, contact the author or check the source repository for updates.
+### 5. **get_fwdata**
+**Description:** Fetches a list of packs with specific firmware versions.
+
+**Parameters:**
+- `fWVersion` (str): Firmware version to filter.
+- `battery_prefix` (str): Battery prefix for filtering.
+
+**Returns:**
+- DataFrame: A pandas DataFrame containing the filtered data.
+
+**Example Usage:**
+```python
+fw_data = get_fwdata(fWVersion="8183D", battery_prefix="MH")
+```
+
+---
+
+### 6. **authenticate**
+**Description:** Authenticates the user using the API login endpoint.
+
+**Returns:**
+- `sid` (str): Session ID for authenticated requests.
+
+**Example Usage:**
+```python
+sid = authenticate()
+```
+
+---
+
+### 7. **read_file_in_memory**
+**Description:** Reads a file from the NAS storage via API and processes it in memory.
+
+**Parameters:**
+- `sid` (str): Session ID for authentication.
+- `imei` (str): IMEI of the device.
+- `year` (str): Year component of the file path.
+- `month` (str): Month component of the file path.
+- `day` (str): Day component of the file path.
+- `file_date` (str): File date string.
+
+**Returns:**
+- DataFrame: A pandas DataFrame containing file data.
+
+**Example Usage:**
+```python
+data = read_file_in_memory(sid, imei, "2024", "06", "27", "20240627")
+```
+
+---
+
+### 8. **adjust_end_date**
+**Description:** Adjusts the end date if it is greater than or equal to today's date.
+
+**Parameters:**
+- `end_date` (str): End date in `YYYY-MM-DD` format.
+
+**Returns:**
+- `str`: Adjusted end date in `YYYY-MM-DD` format.
+
+**Example Usage:**
+```python
+adjusted_date = adjust_end_date("2024-12-20")
+```
+
+---
+
+### 9. **filter_datas**
+**Description:** Filters data within a specified time range.
+
+**Parameters:**
+- `df` (DataFrame): Input data.
+- `start_time` (str): Start time in `YYYY-MM-DD HH:MM` format.
+- `end_time` (str): End time in `YYYY-MM-DD HH:MM` format.
+
+**Example Usage:**
+```python
+filtered_data = filter_datas(df, "2024-10-25 14:30", "2024-10-26 02:17")
+```
+
+---
+
+### 10. **get_data**
+**Description:** Fetches battery data from NAS storage or IoT dashboard.
+
+**Parameters:**
+- `imei` (str): IMEI or serial number.
+- `start_time` (str): Start time in `YYYY-MM-DD HH:MM` format.
+- `end_time` (str): End time in `YYYY-MM-DD HH:MM` format.
+- `filter_data` (bool): Whether to filter data. Default is `False`.
+- `skip` (bool): Skip missing files if `True`. Default is `False`.
+- `nas` (bool): Use NAS storage if `True`. Default is `True`.
+
+**Returns:**
+- DataFrame: A pandas DataFrame containing fetched data.
+
+**Example Usage:**
+```python
+battery_data = get_data("MD0AIOALAA00638", "2024-10-25 14:30", "2024-10-26 02:17")
+```
+
+---
+
+### 11. **pim_make**
+**Description:** Executes the PIM model after setting configurations in C code.
+
+**Parameters:**
+- `directory_path` (str): Path to the directory containing PIM configurations.
+- `model` (int): Model type. Default is `4`.
+- `filename` (str): File extension for the output. Default is `"_iot_data.csv"`.
+
+**Example Usage:**
+```python
+pim_make("/path/to/directory", model=4, filename="_iot_data.csv")
+```
+
+---
+
+### 12. **PIMProcessor** (Class)
+**Description:** Class for processing PIM models and generating reports.
+
+**Methods:**
+- `__init__(directory_path, model)`: Initializes the processor.
+- `fetch_and_process_data(...)`: Processes data for a list of serial numbers.
+- `generate_final_table(checker)`: Generates the final data table.
+- `plot_soh(checker)`: Plots SOH comparison for packs.
+
+**Example Usage:**
+```python
+processor = PIMProcessor("/path/to/directory", model=4)
+processor.fetch_and_process_data([...], "2024-06-27", "2024-06-28")

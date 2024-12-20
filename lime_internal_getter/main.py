@@ -8,7 +8,7 @@ import pandas as pd
 from datetime import timedelta, date
 import numpy as np
 import plotly.graph_objects as go
-from tqdm.notebook import tqdm
+from tqdm import tqdm
 
 home = os.path.expanduser("~")
 filename = ".ligrc"
@@ -321,12 +321,21 @@ def filter_datas(df, start_time, end_time):
 
 
 def get_data(
-    imei, start_time, end_time, serial_no=False, filter_data=False, skip=False
+    imei, start_time, end_time=None, filter_data=False, skip=False, nas=True
 ):
     """
     Use for getting battery data from NAS storage eg:
-    df = get_data("MD0AIOALAA00638", '2024-10-25 14:30', '2024-10-26 02:17', filter_data=True, serial_no=True)
+    df = get_data("MD0AIOALAA00638", '2024-10-25 14:30', '2024-10-26 02:17', filter_data=True)
     """
+    try:
+        int(imei)
+        serial_no = False
+    except ValueError:
+        serial_no = True
+    if not end_time:
+        end_time = start_time
+    if not nas:
+        return get_extdata(imei, start_time, end_time, filter_data=filter_data)
     start_date = start_time.split(" ")[0]
     end_date = end_time.split(" ")[0]
 
@@ -403,14 +412,16 @@ def get_data(
     return df.reset_index(drop=True)
 
 
-def pim_make(directory_path):
+def pim_make(directory_path, model=4, filename="_iot_data.csv"):
     """
     Use this for running the pim after setting configuration inside C code.
     Make sure for temporary testing edit the line no 8 in main.c as
       char *extend = "_iot_data.csv";
-      Set appropriate model type in model.h and run pim_make(directory_path)
+      Set appropriate model type in model.h and run pim_make(directory_path,model=4,filename="_iot_data.csv")
     """
     original_directory = os.getcwd()
+    with open(directory_path + "\\config.cfg", "w") as f:
+        f.write(f"FILE_EXT  = {filename}\nMODEL_TYPE= {model}")
     try:
         # Change to directory and run make command
         os.chdir(directory_path)
@@ -439,14 +450,48 @@ class PIMProcessor:
 
     """
 
-    def __init__(self, directory_path):
+    def __init__(self, directory_path, model=4):
         self.directory_path = directory_path
+        self.model = model
         self.fdf = None
         self.final_table = None
 
     def fetch_and_process_data(
-        self, serial_numbers, start_date, end_date, checker="oh", nas=False
+        self, serial_numbers, start_date, end_date=None, checker="oh", nas=False
     ):
+        """
+        Use this for data fetching and processing in the PIM model:
+
+        Example Usage:
+            PIMProcessor.fetch_and_process_data(
+                serial_numbers, start_date, end_date, checker="oh", nas=False
+            )
+
+        Parameters:
+            serial_numbers: list
+                A list of serial numbers.
+
+            start_date: str
+                The starting date in string format (e.g., "YYYY-MM-DD").
+
+            end_date: str
+                The ending date in string format (e.g., "YYYY-MM-DD").
+
+            checker: str, optional
+                Specifies the type of data to fetch:
+                - "oc" for state of charge (SoC)
+                - "oh" for state of health (SoH)
+                Default is "oh".
+
+            nas: bool, optional
+                Determines whether to use NAS storage for faster data retrieval.
+                - True: Use NAS storage.
+                - False: Do not use NAS storage (default).
+        Final data accessible through PIMProcessor.fdf
+        """
+
+        if not end_date:
+            end_date = start_date
         k = 0
         for ser in tqdm(serial_numbers, desc="Processing Serial Numbers"):
             params = (ser, start_date, end_date)
@@ -465,7 +510,7 @@ class PIMProcessor:
                 continue
 
             try:
-                pim_make(self.directory_path)
+                pim_make(self.directory_path, model=self.model)
             except subprocess.CalledProcessError as e:
                 print(f"Error running make for {ser}: {e.stderr}")
                 continue
@@ -515,7 +560,23 @@ class PIMProcessor:
                 self.fdf = df
                 k += 1
 
-    def generate_final_table(self, checker):
+    def generate_final_table(self, checker, save_csv=False):
+        """
+        Use this method to generate the final table for processed data:
+
+        Example Usage:
+            PIMProcessor.generate_final_table(checker='oh',save_csv=True)
+
+        Parameters:
+            checker: str, optional
+                Specifies the type of data to fetch:
+                - "oc" for state of charge (SoC)
+                - "oh" for state of health (SoH)
+                Default is "oh".
+            save_csv: enable for saving the table as csv
+        Final table accessible thropugh PIMProcessor.final_table
+        """
+
         self.final_table = None
         k = 0
 
@@ -540,8 +601,25 @@ class PIMProcessor:
                 self.final_table = pd.concat(
                     [self.final_table, table[soh_cols]]
                 )
+            if save_csv:
+                self.final_table.to_csv(f"final_tabel_S{checker}.csv")
 
     def plot_soh(self, checker):
+        """
+        Use this method to plot the State of Health (SoH) over time:
+
+        Example Usage:
+            PIMProcessor.plot_soh(checker='oh')
+
+        Parameters:
+
+            checker: str, optional
+                Specifies the type of data to fetch:
+                - "oc" for state of charge (SoC)
+                - "oh" for state of health (SoH)
+                Default is "oh".
+        """
+
         soh_cols = [
             col
             for col in self.fdf.columns
@@ -556,7 +634,9 @@ class PIMProcessor:
 
             table_data = table[soh_cols]
 
-            fig = go.Figure(layout=dict(title=f"SOH Comparison for {ser}"))
+            fig = go.Figure(
+                layout=dict(title=f"S{checker} Comparison for {ser}")
+            )
 
             for tcol in table_data.columns:
                 fig.add_trace(
