@@ -141,7 +141,6 @@ def get_pimdata(
     serial_no=False,
     interpolation=True,
     period=0.1,
-    nas=True,
 ):
     """
     Function to get data from IoT dashboard for Local PIM testing
@@ -150,17 +149,13 @@ def get_pimdata(
     odf = ig.get_extdata(*("MD0AIOALAA00638", '2024-10-25 14:30', '2024-10-26 02:17'))
     ```
     """
-    if nas:
-        df = get_data(
-            IMEI,
-            start_time,
-            end_time,
-            filter_data=filter_data,
-            serial_no=serial_no,
-        )
-        df["timeStamp"] = df["date"] + " " + df["time"]
-    else:
-        df = get_extdata(IMEI, start_time, end_time, filter_data=filter_data)
+    df = get_data(
+        IMEI,
+        start_time,
+        end_time,
+        filter_data=filter_data,
+        serial_no=serial_no,
+    )
     df["Time diff"] = (
         (pd.to_datetime(df["timeStamp"]).astype("int64") / 10**9)
         .diff()
@@ -320,7 +315,7 @@ def filter_datas(df, start_time, end_time):
     )
 
 
-def get_data(
+def get_datas(
     imei, start_time, end_time=None, filter_data=False, skip=False, nas=True
 ):
     """
@@ -412,6 +407,50 @@ def get_data(
     return df.reset_index(drop=True)
 
 
+def get_data(imei, start_time, end_time=None, skip=False):
+    """
+    Use for getting battery data from NAS storage or API
+    eg: df= get_data("MD0AIOALAA00638", '2024-10-25 14:30', '2024-10-26 02:17')
+    Retrieve device data from NAS storage or via an API as a fallback.
+
+    Args:
+        imei (str): The device IMEI to fetch data for.
+        start_time (str): The start time in "YYYY-MM-DD HH:mm" format.
+        end_time (str, optional): The end time in "YYYY-MM-DD HH:mm" format.
+        skip (bool, optional): If True, skip errors. Defaults to False.
+
+    Returns:
+        pandas.DataFrame: A DataFrame containing the retrieved data.
+
+    Raises:
+        ValueError: If data cannot be retrieved from both NAS and API.
+    """
+    if not end_time:
+        end_time = start_time
+    if len(start_time.split(" ")) > 1 or len(end_time.split(" ")) > 1:
+        filter_data = True
+    else:
+        filter_data = False
+    try:
+        df = get_datas(
+            imei, start_time, end_time, filter_data=filter_data, skip=skip
+        )
+        df["timeStamp"] = df["date"] + " " + df["time"]
+        return df
+    except Exception as e:
+        try:
+            return get_datas(
+                imei,
+                start_time,
+                end_time,
+                nas=False,
+                filter_data=filter_data,
+                skip=skip,
+            )
+        except Exception as e1:
+            raise ValueError("Can't get data from NAS and API: ", e, "\n", e1)
+
+
 def pim_make(directory_path, model=4, filename="_iot_data.csv"):
     """
     Use this for running the pim after setting configuration inside C code.
@@ -439,7 +478,7 @@ class PIMProcessor:
     for list of battery serial numbers.
     ## Functionalities ##
     fetch_and_process_data(
-    serial_numbers, start_date, end_date, checker="oh",nas=False
+    serial_numbers, start_date, end_date, checker="oh"
     )
     This function processes all data in list of serial numbers of battery
     and gives an variable accessible through name 'fdf' which has battery
@@ -457,14 +496,14 @@ class PIMProcessor:
         self.final_table = None
 
     def fetch_and_process_data(
-        self, serial_numbers, start_date, end_date=None, checker="oh", nas=False
+        self, serial_numbers, start_date, end_date=None, checker="oh"
     ):
         """
         Use this for data fetching and processing in the PIM model:
 
         Example Usage:
             PIMProcessor.fetch_and_process_data(
-                serial_numbers, start_date, end_date, checker="oh", nas=False
+                serial_numbers, start_date, end_date, checker="oh"
             )
 
         Parameters:
@@ -482,11 +521,6 @@ class PIMProcessor:
                 - "oc" for state of charge (SoC)
                 - "oh" for state of health (SoH)
                 Default is "oh".
-
-            nas: bool, optional
-                Determines whether to use NAS storage for faster data retrieval.
-                - True: Use NAS storage.
-                - False: Do not use NAS storage (default).
         Final data accessible through PIMProcessor.fdf
         """
 
@@ -499,7 +533,7 @@ class PIMProcessor:
             try:
                 # Fetch IoT data and save as CSV
                 get_pimdata(
-                    params[0], params[1], params[2], nas=nas, serial_no=True
+                    params[0], params[1], params[2], serial_no=True
                 ).to_csv(
                     f"{self.directory_path}/input_data/drive_cycle_iot_data.csv",
                     index=False,
@@ -516,10 +550,7 @@ class PIMProcessor:
                 continue
 
             try:
-                if nas:
-                    df = get_data(params[0], params[1], params[2])
-                else:
-                    df = get_extdata(params[0], params[1], params[2])
+                df = get_data(params[0], params[1], params[2])
             except Exception as e:
                 print(f"Error fetching extended data for {ser}: {e}")
                 continue
