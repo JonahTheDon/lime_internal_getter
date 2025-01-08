@@ -137,8 +137,6 @@ def get_pimdata(
     IMEI,
     start_time,
     end_time,
-    filter_data=False,
-    serial_no=False,
     interpolation=True,
     period=0.1,
 ):
@@ -153,8 +151,6 @@ def get_pimdata(
         IMEI,
         start_time,
         end_time,
-        filter_data=filter_data,
-        serial_no=serial_no,
     )
     df["Time diff"] = (
         (pd.to_datetime(df["timeStamp"]).astype("int64") / 10**9)
@@ -458,9 +454,24 @@ def pim_make(directory_path, model=4, filename="_iot_data.csv"):
       char *extend = "_iot_data.csv";
       Set appropriate model type in model.h and run pim_make(directory_path,model=4,filename="_iot_data.csv")
     """
+    content = f"""
+# File name should start with "drive_cycle + FILE_EXT" e.g. drive_cyle_iot_data.csv
+
+FILE_EXT  = {filename}
+MODEL_TYPE= {model}
+
+# MODEL_TYPE 1: NMC, 
+# MODEL_TYPE 2: LFP, 
+# MODEL_TYPE 3: LFP EKF, 
+# MODEL_TYPE 4: NMC EKF, 
+# MODEL_TYPE 5: NMC VRM, 
+# MODEL_TYPE 6: LFP GF, 
+# MODEL_TYPE 7: LMFP SINC 
+# MODEL_TYPE 8: Gotion LFP
+    """
     original_directory = os.getcwd()
-    with open(directory_path + "\\config.cfg", "w") as f:
-        f.write(f"FILE_EXT  = {filename}\nMODEL_TYPE= {model}")
+    with open(directory_path + "/config.cfg", "w") as f:
+        f.write(content)
     try:
         # Change to directory and run make command
         os.chdir(directory_path)
@@ -472,21 +483,225 @@ def pim_make(directory_path, model=4, filename="_iot_data.csv"):
         os.chdir(original_directory)
 
 
+# class PIMProcessor:
+#     """
+#     Use this for processing pim model and generating tables for Abhishek
+#     for list of battery serial numbers.
+#     eg: processor=PIMProcessor(directory_path,step=soc)
+#     ## Functionalities ##
+#     fetch_and_process_data(
+#     serial_numbers, start_date, end_date,
+#     )
+#     This function processes all data in list of serial numbers of battery
+#     and gives an variable accessible through name 'fdf' which has battery
+#     data including PIM.
+#     step: This functionality is for checking model outputs SOC : step='soc' and SOH: step='soh'
+#     generate_final_table(): generates final table accessible through processor.final_table variable
+#     plot_soh(): gives the final plot of soh comparison for packs
+
+#     """
+
+#     def __init__(self, directory_path, model=4,step='soh'):
+#         if step not in ['soh','soc']:
+#             raise ValueError("step should be either 'soh' or 'soc' ")
+#         self.directory_path = directory_path
+#         self.model = model
+#         self.fdf = None
+#         self.final_table = None
+#         self.__checker=step.strip('s')
+
+#     def fetch_and_process_data(
+#         self, serial_numbers, start_date, end_date=None,
+#     ):
+#         """
+#         Use this for data fetching and processing in the PIM model:
+
+#         Example Usage:
+#             PIMProcessor.fetch_and_process_data(
+#                 serial_numbers, start_date, end_date, checker="oh"
+#             )
+
+#         Parameters:
+#             serial_numbers: list
+#                 A list of serial numbers.
+
+#             start_date: str
+#                 The starting date in string format (e.g., "YYYY-MM-DD").
+
+#             end_date: str
+#                 The ending date in string format (e.g., "YYYY-MM-DD").
+#         Final data accessible through PIMProcessor.fdf
+#         """
+#         checker=self.__checker
+#         if not end_date:
+#             end_date = start_date
+#         k = 0
+#         for ser in tqdm(serial_numbers, desc="Processing Serial Numbers"):
+#             params = (ser, start_date, end_date)
+
+#             try:
+#                 # Fetch IoT data and save as CSV
+#                 get_pimdata(
+#                     params[0], params[1], params[2]
+#                 ).to_csv(
+#                     f"{self.directory_path}/input_data/drive_cycle_iot_data.csv",
+#                     index=False,
+#                     header=None,
+#                 )
+#             except Exception as e:
+#                 print(f"Error fetching IoT data for {ser}: {e}")
+#                 continue
+
+#             try:
+#                 pim_make(self.directory_path, model=self.model)
+#             except subprocess.CalledProcessError as e:
+#                 print(f"Error running make for {ser}: {e.stderr}")
+#                 continue
+
+#             try:
+#                 df = get_data(params[0], params[1], params[2])
+#             except Exception as e:
+#                 print(f"Error fetching extended data for {ser}: {e}")
+#                 continue
+
+#             df["Time diff"] = (
+#                 (pd.to_datetime(df["timeStamp"]).astype("int64") / 10**9)
+#                 .diff()
+#                 .fillna(0)
+#             )
+
+#             df["Cumulative Time"] = df["Time diff"].cumsum().fillna(0)
+#             time_data = pd.to_datetime(df["timeStamp"]).astype("int64") / 10**9
+
+#             odf = pd.read_csv(
+#                 f"{self.directory_path}/output_data/final_s{checker}_iot_data.csv",
+#                 header=None,
+#             )
+
+#             maxx = odf.iloc[:, 1:].max(axis=1)
+#             minn = odf.iloc[:, 1:].min(axis=1)
+
+#             df[f"PIM_S{checker}"] = np.interp(
+#                 df["Cumulative Time"], odf[0], odf[3]
+#             )
+#             df[f"PIM_maxS{checker}"] = np.interp(
+#                 df["Cumulative Time"], odf[0], maxx
+#             )
+#             df[f"PIM_minS{checker}"] = np.interp(
+#                 df["Cumulative Time"], odf[0], minn
+#             )
+
+#             df["Cumulative Time"] = pd.to_datetime(time_data, unit="s")
+#             df["Serial_no"] = ser
+
+#             if k > 0:
+#                 self.fdf = pd.concat([self.fdf, df])
+#             else:
+#                 self.fdf = df
+#                 k += 1
+
+#     def generate_final_table(self, save_csv=False):
+#         """
+#         Use this method to generate the final table for processed data:
+
+#         Example Usage:
+#             PIMProcessor.generate_final_table(checker='oh',save_csv=True)
+
+#         Parameters:
+#             save_csv: enable for saving the table as csv
+#         Final table accessible thropugh PIMProcessor.final_table
+#         """
+#         checker=self.__checker
+#         self.final_table = None
+#         k = 0
+
+#         for ser in tqdm(
+#             self.fdf["Serial_no"].unique(), desc="Generating Final Table"
+#         ):
+#             table = self.fdf[self.fdf["Serial_no"] == ser][:-2:-1].copy()
+
+#             for col in [col for col in table.columns if "PIM_" in col]:
+#                 table[col] *= 100
+
+#             soh_cols = [
+#                 col
+#                 for col in table.columns
+#                 if checker in col and "Raw" not in col and "reserve" not in col and 'Warn' not in col
+#             ]
+
+#             if k == 0:
+#                 self.final_table = table[soh_cols]
+#                 k += 1
+#             else:
+#                 self.final_table = pd.concat(
+#                     [self.final_table, table[soh_cols]]
+#                 )
+#             if save_csv:
+#                 self.final_table.to_csv(f"final_tabel_S{checker}.csv")
+
+#     def plot(self,renderer='browser',plot_all=False,all_steps=False):
+#         """
+#         Use this method to plot the State of Health (SoH) over time:
+
+#         Example Usage:
+#             PIMProcessor.plot()
+#         """
+#         checker=self.__checker
+#         soh_cols = [
+#             col
+#             for col in self.fdf.columns
+#             if checker in col and "Raw" not in col and "reserve" not in col and 'Warn' not in col
+#         ]
+
+#         for ser in self.fdf["Serial_no"].unique():
+#             table = self.fdf[self.fdf["Serial_no"] == ser].copy()
+
+#             for col in [col for col in table.columns if "PIM_" in col]:
+#                 table[col] *= 100
+
+#             table_data = table[soh_cols]
+
+#             fig = go.Figure(
+#                 layout=dict(title=f"S{checker} Comparison for {ser}")
+#             )
+#             if plot_all:
+#                 for tcol in table_data.columns:
+#                     fig.add_trace(
+#                         go.Scatter(
+#                             x=table["Cumulative Time"],
+#                             y=table_data[tcol],
+#                             name=tcol,
+#                         )
+#                     )
+#             else:
+#                 if self.__checker=='oh':
+#                     for tcol in ['sohPercent','cellSoh3E','PIM_Soh']:
+#                         fig.add_trace(
+#                             go.Scatter(
+#                                 x=table["Cumulative Time"],
+#                                 y=table_data[tcol],
+#                                 name=tcol,
+#                             )
+#                         )
+#                 else:
+#                     for tcol in ['trueSoc','cellSoc3E','PIM_Soc']:
+#                         fig.add_trace(
+#                             go.Scatter(
+#                                 x=table["Cumulative Time"],
+#                                 y=table_data[tcol],
+#                                 name=tcol,
+#                             )
+#                         )
+
+
+#         if renderer:
+#             fig.show(renderer="browser")
+#         else:
+#             fig.show()
 class PIMProcessor:
     """
-    Use this for processing pim model and generating tables for Abhishek
-    for list of battery serial numbers.
-    ## Functionalities ##
-    fetch_and_process_data(
-    serial_numbers, start_date, end_date, checker="oh"
-    )
-    This function processes all data in list of serial numbers of battery
-    and gives an variable accessible through name 'fdf' which has battery
-    data including PIM.
-    checker: This functionality is for checking SOC : checker='oc' and SOH: checker='oh'
-    generate_final_table(checker): generates final table accessible through processor.final_table variable
-    plot_soh(checker): gives the final plot of soh comparison for packs
-
+    Use this for processing the model and generating tables for lists of batteries.
+    This version always processes both SOC and SOH without any step argument.
     """
 
     def __init__(self, directory_path, model=4):
@@ -495,46 +710,21 @@ class PIMProcessor:
         self.fdf = None
         self.final_table = None
 
-    def fetch_and_process_data(
-        self, serial_numbers, start_date, end_date=None, checker="oh"
-    ):
+    def fetch_and_process_data(self, serial_numbers, start_date, end_date=None):
         """
-        Use this for data fetching and processing in the PIM model:
-
-        Example Usage:
-            PIMProcessor.fetch_and_process_data(
-                serial_numbers, start_date, end_date, checker="oh"
-            )
-
-        Parameters:
-            serial_numbers: list
-                A list of serial numbers.
-
-            start_date: str
-                The starting date in string format (e.g., "YYYY-MM-DD").
-
-            end_date: str
-                The ending date in string format (e.g., "YYYY-MM-DD").
-
-            checker: str, optional
-                Specifies the type of data to fetch:
-                - "oc" for state of charge (SoC)
-                - "oh" for state of health (SoH)
-                Default is "oh".
-        Final data accessible through PIMProcessor.fdf
+        Fetches and processes data for each serial number and appends SOC and SOH
+        (and their min/max) to the DataFrame.
+        Final data is stored in self.fdf.
         """
-
         if not end_date:
             end_date = start_date
         k = 0
         for ser in tqdm(serial_numbers, desc="Processing Serial Numbers"):
             params = (ser, start_date, end_date)
 
+            # 1) Fetch IoT data and save as CSV
             try:
-                # Fetch IoT data and save as CSV
-                get_pimdata(
-                    params[0], params[1], params[2], serial_no=True
-                ).to_csv(
+                get_pimdata(params[0], params[1], params[2]).to_csv(
                     f"{self.directory_path}/input_data/drive_cycle_iot_data.csv",
                     index=False,
                     header=None,
@@ -543,12 +733,14 @@ class PIMProcessor:
                 print(f"Error fetching IoT data for {ser}: {e}")
                 continue
 
+            # 2) Run the make command to generate model outputs
             try:
                 pim_make(self.directory_path, model=self.model)
             except subprocess.CalledProcessError as e:
                 print(f"Error running make for {ser}: {e.stderr}")
                 continue
 
+            # 3) Get the combined DataFrame from internal storage
             try:
                 df = get_data(params[0], params[1], params[2])
             except Exception as e:
@@ -560,28 +752,50 @@ class PIMProcessor:
                 .diff()
                 .fillna(0)
             )
-
             df["Cumulative Time"] = df["Time diff"].cumsum().fillna(0)
             time_data = pd.to_datetime(df["timeStamp"]).astype("int64") / 10**9
 
-            odf = pd.read_csv(
-                f"{self.directory_path}/output_data/final_s{checker}_iot_data.csv",
-                header=None,
-            )
+            # 4) Read final_soc_iot_data.csv
+            try:
+                odf_soc = pd.read_csv(
+                    f"{self.directory_path}/output_data/final_soc_iot_data.csv",
+                    header=None,
+                )
+                maxx_soc = odf_soc.iloc[:, 1:].max(axis=1)
+                minn_soc = odf_soc.iloc[:, 1:].min(axis=1)
+                df["PIM_Soc"] = np.interp(
+                    df["Cumulative Time"], odf_soc[0], odf_soc[3]
+                )
+                df["PIM_maxSoc"] = np.interp(
+                    df["Cumulative Time"], odf_soc[0], maxx_soc
+                )
+                df["PIM_minSoc"] = np.interp(
+                    df["Cumulative Time"], odf_soc[0], minn_soc
+                )
+            except Exception as e:
+                print(f"Error reading final_soc_iot_data.csv for {ser}: {e}")
 
-            maxx = odf.iloc[:, 1:].max(axis=1)
-            minn = odf.iloc[:, 1:].min(axis=1)
+            # 5) Read final_soh_iot_data.csv
+            try:
+                odf_soh = pd.read_csv(
+                    f"{self.directory_path}/output_data/final_soh_iot_data.csv",
+                    header=None,
+                )
+                maxx_soh = odf_soh.iloc[:, 1:].max(axis=1)
+                minn_soh = odf_soh.iloc[:, 1:].min(axis=1)
+                df["PIM_Soh"] = np.interp(
+                    df["Cumulative Time"], odf_soh[0], odf_soh[3]
+                )
+                df["PIM_maxSoh"] = np.interp(
+                    df["Cumulative Time"], odf_soh[0], maxx_soh
+                )
+                df["PIM_minSoh"] = np.interp(
+                    df["Cumulative Time"], odf_soh[0], minn_soh
+                )
+            except Exception as e:
+                print(f"Error reading final_soh_iot_data.csv for {ser}: {e}")
 
-            df[f"PIM_S{checker}"] = np.interp(
-                df["Cumulative Time"], odf[0], odf[3]
-            )
-            df[f"PIM_maxS{checker}"] = np.interp(
-                df["Cumulative Time"], odf[0], maxx
-            )
-            df[f"PIM_minS{checker}"] = np.interp(
-                df["Cumulative Time"], odf[0], minn
-            )
-
+            # Convert back to real timestamps and keep track of serial number
             df["Cumulative Time"] = pd.to_datetime(time_data, unit="s")
             df["Serial_no"] = ser
 
@@ -591,91 +805,125 @@ class PIMProcessor:
                 self.fdf = df
                 k += 1
 
-    def generate_final_table(self, checker, save_csv=False):
+    def generate_final_table(self, save_csv=False):
         """
-        Use this method to generate the final table for processed data:
-
-        Example Usage:
-            PIMProcessor.generate_final_table(checker='oh',save_csv=True)
-
-        Parameters:
-            checker: str, optional
-                Specifies the type of data to fetch:
-                - "oc" for state of charge (SoC)
-                - "oh" for state of health (SoH)
-                Default is "oh".
-            save_csv: enable for saving the table as csv
-        Final table accessible thropugh PIMProcessor.final_table
+        Generates a final table containing both SOC and SOH details from the data.
+        Final table is stored in self.final_table.
         """
+        if self.fdf is None:
+            print("No data available. Please run fetch_and_process_data first.")
+            return
 
         self.final_table = None
         k = 0
-
         for ser in tqdm(
             self.fdf["Serial_no"].unique(), desc="Generating Final Table"
         ):
             table = self.fdf[self.fdf["Serial_no"] == ser][:-2:-1].copy()
 
+            # Scale PIM columns by 100
             for col in [col for col in table.columns if "PIM_" in col]:
                 table[col] *= 100
 
+            # Keep relevant SOC and SOH columns
+            soc_cols = [
+                col
+                for col in table.columns
+                if "Soc" in col
+                and "Raw" not in col
+                and "reserve" not in col
+                and "Warn" not in col
+            ]
             soh_cols = [
                 col
                 for col in table.columns
-                if checker in col and "Raw" not in col and "reserve" not in col
+                if "Soh" in col
+                and "Raw" not in col
+                and "reserve" not in col
+                and "Warn" not in col
             ]
+            needed_cols = soc_cols + soh_cols
 
             if k == 0:
-                self.final_table = table[soh_cols]
+                self.final_table = table[needed_cols]
                 k += 1
             else:
                 self.final_table = pd.concat(
-                    [self.final_table, table[soh_cols]]
+                    [self.final_table, table[needed_cols]]
                 )
-            if save_csv:
-                self.final_table.to_csv(f"final_tabel_S{checker}.csv")
 
-    def plot_soh(self, checker):
+        if save_csv and self.final_table is not None:
+            self.final_table.to_csv(
+                f"{self.directory_path}/final_table.csv", index=False
+            )
+
+    def plot(self, renderer="browser", plot_all=False):
         """
-        Use this method to plot the State of Health (SoH) over time:
-
-        Example Usage:
-            PIMProcessor.plot_soh(checker='oh')
-
-        Parameters:
-
-            checker: str, optional
-                Specifies the type of data to fetch:
-                - "oc" for state of charge (SoC)
-                - "oh" for state of health (SoH)
-                Default is "oh".
+        Plots two separate windows for SOC and SOH for each serial number
+        in the data by default.
         """
+        if self.fdf is None:
+            print("No data to plot. Please run fetch_and_process_data first.")
+            return
 
-        soh_cols = [
-            col
-            for col in self.fdf.columns
-            if checker in col and "Raw" not in col and "reserve" not in col
-        ]
-
+        # For each serial number, create two plots: SOC and SOH
         for ser in self.fdf["Serial_no"].unique():
             table = self.fdf[self.fdf["Serial_no"] == ser].copy()
 
+            # Scale PIM columns by 100
             for col in [col for col in table.columns if "PIM_" in col]:
                 table[col] *= 100
 
-            table_data = table[soh_cols]
+            # 1) SOC Plot
+            soc_cols = [col for col in table.columns if "Soc" in col]
+            fig_soc = go.Figure(layout=dict(title=f"SOC Comparison for {ser}"))
 
-            fig = go.Figure(
-                layout=dict(title=f"S{checker} Comparison for {ser}")
-            )
-
-            for tcol in table_data.columns:
-                fig.add_trace(
-                    go.Scatter(
-                        x=table["Cumulative Time"],
-                        y=table_data[tcol],
-                        name=tcol,
+            if plot_all:
+                for tcol in soc_cols:
+                    fig_soc.add_trace(
+                        go.Scatter(
+                            x=table["Cumulative Time"],
+                            y=table[tcol],
+                            name=tcol,
+                        )
                     )
-                )
+            else:
+                # Common columns to plot (if present)
+                default_soc_cols = ["trueSoc", "cellSoc3E", "PIM_Soc"]
+                for tcol in default_soc_cols:
+                    if tcol in table.columns:
+                        fig_soc.add_trace(
+                            go.Scatter(
+                                x=table["Cumulative Time"],
+                                y=table[tcol],
+                                name=tcol,
+                            )
+                        )
+            fig_soc.show(renderer=renderer)
 
-            fig.show(renderer="browser")
+            # 2) SOH Plot
+            soh_cols = [col for col in table.columns if "Soh" in col]
+            fig_soh = go.Figure(layout=dict(title=f"SOH Comparison for {ser}"))
+
+            if plot_all:
+                for tcol in soh_cols:
+                    fig_soh.add_trace(
+                        go.Scatter(
+                            x=table["Cumulative Time"],
+                            y=table[tcol],
+                            name=tcol,
+                        )
+                    )
+            else:
+                # Common columns to plot (if present)
+                default_soh_cols = ["sohPercent", "cellSoh3E", "PIM_Soh"]
+                for tcol in default_soh_cols:
+                    if tcol in table.columns:
+                        fig_soh.add_trace(
+                            go.Scatter(
+                                x=table["Cumulative Time"],
+                                y=table[tcol],
+                                name=tcol,
+                            )
+                        )
+            fig_soh.show(renderer=renderer)

@@ -70,7 +70,7 @@ class KalmanFilter:
             self.capacity = 100  # Ah
             self.num_cells_parallel = 1
             self.num_cells_series = 16
-            self.soh = [1.0 for i in range(len(self.num_cells_series))]
+            self.soh = [1.0 for i in range(self.num_cells_series)]
 
     def update_kalman_filter(
         self, measurement, initial_state, initial_covariance, F, H, Q, R
@@ -277,20 +277,25 @@ class KalmanFilter:
                             / (
                                 2
                                 * np.interp(
-                                    (current / (self.capacity * self.soh)),
+                                    (
+                                        current
+                                        / (self.capacity * self.soh[cell_num])
+                                    ),
                                     c_rates,
                                     ejs,
                                 )
-                                * (self.capacity * self.soh)
+                                * (self.capacity * self.soh[cell_num])
                             )
                         )
                     )
                     - (
                         np.interp(
-                            current / (self.capacity * self.soh), c_rates, ecirs
+                            current / (self.capacity * self.soh[cell_num]),
+                            c_rates,
+                            ecirs,
                         )
                         * 0.001
-                        * (current / self.capacity * self.soh)
+                        * (current / self.capacity * self.soh[cell_num])
                     )
                 )
             else:
@@ -303,23 +308,26 @@ class KalmanFilter:
                             / (
                                 2
                                 * np.interp(
-                                    abs(current / (self.capacity * self.soh)),
+                                    abs(
+                                        current
+                                        / (self.capacity * self.soh[cell_num])
+                                    ),
                                     dc_rates,
                                     edjs,
                                 )
                                 * self.capacity
-                                * self.soh
+                                * self.soh[cell_num]
                             )
                         )
                     )
                     - (
                         np.interp(
-                            abs(current / (self.capacity * self.soh)),
+                            abs(current / (self.capacity * self.soh[cell_num])),
                             dc_rates,
                             edirs,
                         )
                         * 0.001
-                        * (current / (self.capacity * self.soh))
+                        * (current / (self.capacity * self.soh[cell_num]))
                     )
                 )
         return ocv
@@ -341,7 +349,7 @@ class KalmanFilter:
         self.initial_covariance = [1000 for _ in range(len(voltages))]
 
         if self.num_cells_series != len(voltages):
-            raise Warning(
+            print(
                 "Number of cells series is not equal to the number of voltages\n Kalman Filter will be performed for available cells"
             )
 
@@ -370,8 +378,8 @@ class KalmanFilter:
             measurements.append(
                 [
                     self.resistance_calculation(
-                        current.iloc[i] / self.num_cells_parallel,
-                        voltage.iloc[i],
+                        float(current.iloc[i]) / self.num_cells_parallel,
+                        float(voltage.iloc[i]),
                         cell_num,
                     )
                     for cell_num, voltage in enumerate(voltages)

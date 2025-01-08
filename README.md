@@ -100,13 +100,14 @@ pim_make("/path/to/directory", model=4, filename="_iot_data.csv")
 ---
 
 ### 6. **PIMProcessor** (Class)
-**Description:** Class for processing PIM models and generating reports. (Not required for non-developers of PIM Model)
+**Description:** Class for processing PIM models and generating reports. (Not required for non-developers of PIM Model) 
+*Use two instantiations of class  for checking soc and soh with 'step' kwargs*
 
 **Methods:**
-- `__init__(directory_path, model)`: Initializes the processor.
+- `__init__(directory_path, model,step)`: Initializes the processor.
 - `fetch_and_process_data(...)`: Processes data for a list of serial numbers.
-- `generate_final_table(checker,save_csv)`: Generates the final data table.
-- `plot_soh(checker)`: Plots SOH comparison for packs.
+- `generate_final_table(save_csv)`: Generates the final data table.
+- `plot()`: Plots SOH comparison for packs.
 
 **Example Usage:**
 ```python

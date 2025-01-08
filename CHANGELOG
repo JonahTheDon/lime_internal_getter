@@ -4,3 +4,15 @@
 ### Added
 - Reduced accssible functions to 6
 - Improved documentation
+
+## [0.0.9] - 2025-01-08
+### Removed
+- checker functionality in PIM_processor for each function
+- Improved documentation
+
+### Fix
+- Issue of pim_make not working in linux
+- plot_soh function now works as plot in PIMProcessor and plots both soc and soh.
+
+### Added
+- step arg in PIMProcessor class to replace checker
