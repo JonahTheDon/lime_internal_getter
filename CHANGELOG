@@ -1,9 +1,13 @@
 # Changelog
 
-## [0.0.8] - 2024-12-20
+## [0.1.0] - 13-01-2025
+
 ### Added
-- Reduced accssible functions to 6
-- Improved documentation
+- Model type 6 for only internal development still to be accessed by the user
+- Correction monitor in PIMProcessor class
+
+### Fix 
+- Different functionalities for PIM processor
 
 ## [0.0.9] - 2025-01-08
 ### Removed
@@ -16,3 +20,8 @@
 
 ### Added
 - step arg in PIMProcessor class to replace checker
+
+## [0.0.8] - 2024-12-20
+### Added
+- Reduced accssible functions to 6
+- Improved documentation

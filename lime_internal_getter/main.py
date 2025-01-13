@@ -483,221 +483,6 @@ MODEL_TYPE= {model}
         os.chdir(original_directory)
 
 
-# class PIMProcessor:
-#     """
-#     Use this for processing pim model and generating tables for Abhishek
-#     for list of battery serial numbers.
-#     eg: processor=PIMProcessor(directory_path,step=soc)
-#     ## Functionalities ##
-#     fetch_and_process_data(
-#     serial_numbers, start_date, end_date,
-#     )
-#     This function processes all data in list of serial numbers of battery
-#     and gives an variable accessible through name 'fdf' which has battery
-#     data including PIM.
-#     step: This functionality is for checking model outputs SOC : step='soc' and SOH: step='soh'
-#     generate_final_table(): generates final table accessible through processor.final_table variable
-#     plot_soh(): gives the final plot of soh comparison for packs
-
-#     """
-
-#     def __init__(self, directory_path, model=4,step='soh'):
-#         if step not in ['soh','soc']:
-#             raise ValueError("step should be either 'soh' or 'soc' ")
-#         self.directory_path = directory_path
-#         self.model = model
-#         self.fdf = None
-#         self.final_table = None
-#         self.__checker=step.strip('s')
-
-#     def fetch_and_process_data(
-#         self, serial_numbers, start_date, end_date=None,
-#     ):
-#         """
-#         Use this for data fetching and processing in the PIM model:
-
-#         Example Usage:
-#             PIMProcessor.fetch_and_process_data(
-#                 serial_numbers, start_date, end_date, checker="oh"
-#             )
-
-#         Parameters:
-#             serial_numbers: list
-#                 A list of serial numbers.
-
-#             start_date: str
-#                 The starting date in string format (e.g., "YYYY-MM-DD").
-
-#             end_date: str
-#                 The ending date in string format (e.g., "YYYY-MM-DD").
-#         Final data accessible through PIMProcessor.fdf
-#         """
-#         checker=self.__checker
-#         if not end_date:
-#             end_date = start_date
-#         k = 0
-#         for ser in tqdm(serial_numbers, desc="Processing Serial Numbers"):
-#             params = (ser, start_date, end_date)
-
-#             try:
-#                 # Fetch IoT data and save as CSV
-#                 get_pimdata(
-#                     params[0], params[1], params[2]
-#                 ).to_csv(
-#                     f"{self.directory_path}/input_data/drive_cycle_iot_data.csv",
-#                     index=False,
-#                     header=None,
-#                 )
-#             except Exception as e:
-#                 print(f"Error fetching IoT data for {ser}: {e}")
-#                 continue
-
-#             try:
-#                 pim_make(self.directory_path, model=self.model)
-#             except subprocess.CalledProcessError as e:
-#                 print(f"Error running make for {ser}: {e.stderr}")
-#                 continue
-
-#             try:
-#                 df = get_data(params[0], params[1], params[2])
-#             except Exception as e:
-#                 print(f"Error fetching extended data for {ser}: {e}")
-#                 continue
-
-#             df["Time diff"] = (
-#                 (pd.to_datetime(df["timeStamp"]).astype("int64") / 10**9)
-#                 .diff()
-#                 .fillna(0)
-#             )
-
-#             df["Cumulative Time"] = df["Time diff"].cumsum().fillna(0)
-#             time_data = pd.to_datetime(df["timeStamp"]).astype("int64") / 10**9
-
-#             odf = pd.read_csv(
-#                 f"{self.directory_path}/output_data/final_s{checker}_iot_data.csv",
-#                 header=None,
-#             )
-
-#             maxx = odf.iloc[:, 1:].max(axis=1)
-#             minn = odf.iloc[:, 1:].min(axis=1)
-
-#             df[f"PIM_S{checker}"] = np.interp(
-#                 df["Cumulative Time"], odf[0], odf[3]
-#             )
-#             df[f"PIM_maxS{checker}"] = np.interp(
-#                 df["Cumulative Time"], odf[0], maxx
-#             )
-#             df[f"PIM_minS{checker}"] = np.interp(
-#                 df["Cumulative Time"], odf[0], minn
-#             )
-
-#             df["Cumulative Time"] = pd.to_datetime(time_data, unit="s")
-#             df["Serial_no"] = ser
-
-#             if k > 0:
-#                 self.fdf = pd.concat([self.fdf, df])
-#             else:
-#                 self.fdf = df
-#                 k += 1
-
-#     def generate_final_table(self, save_csv=False):
-#         """
-#         Use this method to generate the final table for processed data:
-
-#         Example Usage:
-#             PIMProcessor.generate_final_table(checker='oh',save_csv=True)
-
-#         Parameters:
-#             save_csv: enable for saving the table as csv
-#         Final table accessible thropugh PIMProcessor.final_table
-#         """
-#         checker=self.__checker
-#         self.final_table = None
-#         k = 0
-
-#         for ser in tqdm(
-#             self.fdf["Serial_no"].unique(), desc="Generating Final Table"
-#         ):
-#             table = self.fdf[self.fdf["Serial_no"] == ser][:-2:-1].copy()
-
-#             for col in [col for col in table.columns if "PIM_" in col]:
-#                 table[col] *= 100
-
-#             soh_cols = [
-#                 col
-#                 for col in table.columns
-#                 if checker in col and "Raw" not in col and "reserve" not in col and 'Warn' not in col
-#             ]
-
-#             if k == 0:
-#                 self.final_table = table[soh_cols]
-#                 k += 1
-#             else:
-#                 self.final_table = pd.concat(
-#                     [self.final_table, table[soh_cols]]
-#                 )
-#             if save_csv:
-#                 self.final_table.to_csv(f"final_tabel_S{checker}.csv")
-
-#     def plot(self,renderer='browser',plot_all=False,all_steps=False):
-#         """
-#         Use this method to plot the State of Health (SoH) over time:
-
-#         Example Usage:
-#             PIMProcessor.plot()
-#         """
-#         checker=self.__checker
-#         soh_cols = [
-#             col
-#             for col in self.fdf.columns
-#             if checker in col and "Raw" not in col and "reserve" not in col and 'Warn' not in col
-#         ]
-
-#         for ser in self.fdf["Serial_no"].unique():
-#             table = self.fdf[self.fdf["Serial_no"] == ser].copy()
-
-#             for col in [col for col in table.columns if "PIM_" in col]:
-#                 table[col] *= 100
-
-#             table_data = table[soh_cols]
-
-#             fig = go.Figure(
-#                 layout=dict(title=f"S{checker} Comparison for {ser}")
-#             )
-#             if plot_all:
-#                 for tcol in table_data.columns:
-#                     fig.add_trace(
-#                         go.Scatter(
-#                             x=table["Cumulative Time"],
-#                             y=table_data[tcol],
-#                             name=tcol,
-#                         )
-#                     )
-#             else:
-#                 if self.__checker=='oh':
-#                     for tcol in ['sohPercent','cellSoh3E','PIM_Soh']:
-#                         fig.add_trace(
-#                             go.Scatter(
-#                                 x=table["Cumulative Time"],
-#                                 y=table_data[tcol],
-#                                 name=tcol,
-#                             )
-#                         )
-#                 else:
-#                     for tcol in ['trueSoc','cellSoc3E','PIM_Soc']:
-#                         fig.add_trace(
-#                             go.Scatter(
-#                                 x=table["Cumulative Time"],
-#                                 y=table_data[tcol],
-#                                 name=tcol,
-#                             )
-#                         )
-
-
-#         if renderer:
-#             fig.show(renderer="browser")
-#         else:
-#             fig.show()
 class PIMProcessor:
     """
     Use this for processing the model and generating tables for lists of batteries.
@@ -709,6 +494,8 @@ class PIMProcessor:
         self.model = model
         self.fdf = None
         self.final_table = None
+        self.__odf_soc = None
+        self.__odf_soh = None
 
     def fetch_and_process_data(self, serial_numbers, start_date, end_date=None):
         """
@@ -761,6 +548,7 @@ class PIMProcessor:
                     f"{self.directory_path}/output_data/final_soc_iot_data.csv",
                     header=None,
                 )
+                self.__odf_soc = odf_soc
                 maxx_soc = odf_soc.iloc[:, 1:].max(axis=1)
                 minn_soc = odf_soc.iloc[:, 1:].min(axis=1)
                 df["PIM_Soc"] = np.interp(
@@ -781,6 +569,7 @@ class PIMProcessor:
                     f"{self.directory_path}/output_data/final_soh_iot_data.csv",
                     header=None,
                 )
+                self.__odf_soh = odf_soh
                 maxx_soh = odf_soh.iloc[:, 1:].max(axis=1)
                 minn_soh = odf_soh.iloc[:, 1:].min(axis=1)
                 df["PIM_Soh"] = np.interp(
@@ -861,6 +650,9 @@ class PIMProcessor:
         """
         Plots two separate windows for SOC and SOH for each serial number
         in the data by default.
+        Parameters:
+        - renderer: Use None to display the plot in the console.
+        - plot_all: If True, plots all available columns for SOC and SOH.
         """
         if self.fdf is None:
             print("No data to plot. Please run fetch_and_process_data first.")
@@ -927,3 +719,133 @@ class PIMProcessor:
                             )
                         )
             fig_soh.show(renderer=renderer)
+
+    def __process_row_for_errors(self, i):
+        global df1, odf
+        serial_num = i
+        if self.__odf_soc is not None:
+            odf = self.__odf_soc
+        else:
+            raise RuntimeError("Please run fetch_and_process data first")
+        try:
+            # Fetch data for max_error calculation
+            df1 = self.fdf[self.fdf["Serial_no"] == serial_num].copy()
+            if df1.shape[0] == 0:
+                return serial_num, None, None
+        except KeyError:
+            print(
+                f"Skipping for {serial_num} for error calculation due data error"
+            )
+            return serial_num, None, None
+        df1["Time diff"] = (
+            (pd.to_datetime(df1["timeStamp"]).astype("int64") / 10**9)
+            .diff()
+            .fillna(0)
+        )
+        time_data = pd.to_datetime(df1["timeStamp"]).astype("int64") / 10**9
+        time_datao = odf[0].diff()
+        time_datao.iloc[0] = time_data.iloc[0]
+        df1["PIM_SOC"] = np.interp(
+            df1["Time diff"].cumsum().fillna(0), odf[0], odf[3]
+        )
+        time_datao = time_datao.cumsum().fillna(
+            time_datao.iloc[0]
+        )  # Convert output time to the format of input timestamp
+        time_data = pd.to_datetime(time_data, unit="s")
+        time_datao = pd.to_datetime(time_datao, unit="s")
+        timer = 0
+        error1 = []
+        time1 = []
+        error2 = []
+        time2 = []
+        for o in range(df1.shape[0] - 10):
+            if abs(df1["batCurrent"].iloc[o]) < 0.5:
+                timer += df1["Time diff"].iloc[o]
+            else:
+                timer = 0
+            if timer > 900 and (
+                ((df1["trueSoc"].iloc[o] - df1["trueSoc"].iloc[o + 10]) > 0.05)
+                and (abs(df1["batCurrent"].iloc[o + 10]) < 0.5)
+            ):
+                if (
+                    df1["trueSoc"].iloc[o + 10] != 0
+                    and df1["cellSoc3E"].iloc[o + 10] != 0
+                    and df1["trueSoc"].iloc[o] != 0
+                    and df1["PIM_SOC"].iloc[o] != 0
+                    and df1["PIM_SOC"].iloc[o + 10] != 0
+                ):
+                    error1.append(
+                        df1["trueSoc"].iloc[o + 10] - df1["cellSoc3E"].iloc[o]
+                    )
+                    error2.append(
+                        df1["trueSoc"].iloc[o + 10]
+                        - (df1["PIM_SOC"] * 100).iloc[o]
+                    )
+                    time1.append(df1["timeStamp"].iloc[o])
+                    time2.append(df1["timeStamp"].iloc[o])
+
+        return serial_num, error1, error2, time1, time2
+
+    def correction_monitor(self, renderer="browser"):
+        """
+        Use for plotting
+        """
+        bms_error = []
+        pim_error = []
+        for ser in tqdm(
+            self.fdf["Serial_no"].unique(),
+            desc="Calculating corrections for serial numbers",
+        ):
+            result = self.__process_row_for_errors(ser)
+            result = list(result)
+            for res in range(len(result)):
+                result[res] = list(result[res])
+            print(
+                "Max Error:",
+                abs(pd.Series(result[1])).max(),
+                "Time : ",
+                result[3][abs(pd.Series(result[1])).idxmax()],
+            )
+            print(
+                "Max Error2:",
+                abs(pd.Series(result[2])).max(),
+                "Time : ",
+                result[4][abs(pd.Series(result[2])).idxmax()],
+            )
+            print("Average Error:", np.average(abs(pd.Series(result[1]))))
+            print("Average Error2:", np.average(abs(pd.Series(result[2]))))
+            bms_error.append(
+                [pd.to_datetime(result[3]), abs(pd.Series(result[1]))]
+            )
+            pim_error.append(
+                [pd.to_datetime(result[4]), abs(pd.Series(result[2]))]
+            )
+            fig = go.Figure(
+                layout=dict(
+                    title="Error comparison during SOC correction in bms and PIM for "
+                    + str(ser)
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=pd.to_datetime(result[3]),
+                    y=abs(pd.Series(result[1])),
+                    name="BMS SOH :" + str(self.fdf["cellSoh3E"].iloc[-1]),
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=pd.to_datetime(result[4]),
+                    y=abs(pd.Series(result[2])),
+                    name="PIM SOH :"
+                    + str(
+                        np.round(self.fdf["PIM_Soh"].iloc[-1] * 100, decimals=0)
+                    ),
+                )
+            )
+            if renderer:
+                fig.show(renderer="browser")
+            else:
+                fig.show()
+        self.bms_error = bms_error
+        self.pim_error = pim_error
