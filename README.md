@@ -113,3 +113,5 @@ pim_make("/path/to/directory", model=4, filename="_iot_data.csv")
 ```python
 processor = PIMProcessor("/path/to/directory", model=4)
 processor.fetch_and_process_data([...], "2024-06-27", "2024-06-28")
+processor.correction_monitor()
+print(processor.bms_errors)

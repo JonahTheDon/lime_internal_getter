@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lime_internal_getter"
-version = "0.1.0"
+version = "0.1.2"
 authors = [
   { name="Harisankar Suresh", email="harisankar.suresh@lime.ai" },
 ]
