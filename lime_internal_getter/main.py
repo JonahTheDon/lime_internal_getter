@@ -107,7 +107,7 @@ def get_extdata(IMEI, start_time, end_time, filter_data=False):
     start_date = start_time.split(" ")[0]
     start_date = pd.to_datetime(start_date).strftime("%Y-%m-%d")
     end_date = end_time.split(" ")[0]
-    start_date = pd.to_datetime(end_date).strftime("%Y-%m-%d")
+    end_date = pd.to_datetime(end_date).strftime("%Y-%m-%d")
     headers = headers = {
         "Authorization": f"{auth_key}",
         "Content-Type": "application/json",
@@ -429,7 +429,11 @@ def get_data(imei, start_time, end_time=None, skip=False):
         filter_data = False
     try:
         df = get_datas(
-            imei, start_time, end_time, filter_data=filter_data, skip=skip
+            imei,
+            start_time,
+            end_time=end_time,
+            filter_data=filter_data,
+            skip=skip,
         )
         df["timeStamp"] = df["date"] + " " + df["time"]
         return df
