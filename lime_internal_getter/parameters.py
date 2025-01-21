@@ -6,9 +6,9 @@ def get_model_9_params():
     Returns all the parameters related to model 9 (GangFeng 100Ah LFP).
     """
     return {
-        "Q": 0.1,  # State transition matrix 1x1
-        "H": 1,  # Observation matrix 1x1
-        "R": 4.71290239e9,  # Process noise covariance 1x1
+        "Q": np.float32(0.1),  # State transition matrix 1x1
+        "H": np.float32(1),  # Observation matrix 1x1
+        "R": np.float32(4.71290239e9),  # Process noise covariance 1x1
         "x3": np.array(
             [
                 0.0,
@@ -63,7 +63,7 @@ def get_model_9_params():
                 3.4006,
             ]
         ),
-        "capacity": 100,
-        "num_cells_parallel": 1,
-        "num_cells_series": 16,
+        "capacity": np.float32(100),
+        "num_cells_parallel": np.float32(1),
+        "num_cells_series": np.float32(16),
     }

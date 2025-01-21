@@ -1,4 +1,5 @@
 import numpy as np
+import interpolate as ip
 
 
 def eta_IR_model(model):
@@ -159,9 +160,9 @@ def resistance_calculation(params, voltage, current, cell_num, soh, model):
     Calculates the OCV using an IR model approach for model=9.
     """
     # Current should be cell current i.e., current / num_cells_parallel
-    R_const = 8.31446261815324
-    T = 298.15
-    F_const = 96485.33212
+    R_const = np.float32(8.31446261815324)
+    T = np.float32(298.15)
+    F_const = np.float32(96485.33212)
 
     if model == 9:
         ecirs, ejs, edirs, edjs, c_rates, dc_rates = eta_IR_model(model)
@@ -179,7 +180,7 @@ def resistance_calculation(params, voltage, current, cell_num, soh, model):
                         current
                         / (
                             2
-                            * np.interp(
+                            * ip.interp(
                                 (current / (capacity * soh[cell_num])),
                                 c_rates,
                                 ejs,
@@ -189,7 +190,7 @@ def resistance_calculation(params, voltage, current, cell_num, soh, model):
                     )
                 )
                 - (
-                    np.interp(
+                    ip.interp(
                         current / (capacity * soh[cell_num]), c_rates, ecirs
                     )
                     * 0.001
@@ -205,7 +206,7 @@ def resistance_calculation(params, voltage, current, cell_num, soh, model):
                         current
                         / (
                             2
-                            * np.interp(
+                            * ip.interp(
                                 abs(current / (capacity * soh[cell_num])),
                                 dc_rates,
                                 edjs,
@@ -216,7 +217,7 @@ def resistance_calculation(params, voltage, current, cell_num, soh, model):
                     )
                 )
                 - (
-                    np.interp(
+                    ip.interp(
                         abs(current / (capacity * soh[cell_num])),
                         dc_rates,
                         edirs,

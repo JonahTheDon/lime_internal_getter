@@ -3,6 +3,7 @@ import pandas as pd
 from parameters import get_model_9_params
 from resistance import resistance_calculation
 import soh
+import interpolate as ip
 
 
 class KalmanFilter:
@@ -19,12 +20,20 @@ class KalmanFilter:
             self.capacity = params_9["capacity"]
             self.num_cells_parallel = params_9["num_cells_parallel"]
             self.num_cells_series = params_9["num_cells_series"]
-            self.__soh_value = [1.0 for i in range(self.num_cells_series)]
-            self.__kf_key = [0.0 for i in range(self.num_cells_series)]
+            self.__soh_value = [1.0 for i in range(int(self.num_cells_series))]
+            self.__kf_key = [0.0 for i in range(int(self.num_cells_series))]
             self.__recal_flag = False
 
     def update_kalman_filter(
-        self, measurement, initial_state, initial_covariance, F, H, Q, R
+        self,
+        measurement,
+        initial_state,
+        initial_covariance,
+        F,
+        H,
+        Q,
+        R,
+        filtercond,
     ):
         """
         Updates the state and covariance of a Kalman filter given a new measurement.
@@ -45,19 +54,21 @@ class KalmanFilter:
             (F * initial_state) if (initial_state != 0) else (F + initial_state)
         )
         predicted_covariance = F * initial_covariance * F + Q
+        kalman_gain = (
+            predicted_covariance * H / (H * predicted_covariance * H + R)
+        )
         if predicted_state > 1.03:
             predicted_state = 1.03
         if predicted_state < 0.0:
             predicted_state = 0.0
-        kalman_gain = (
-            predicted_covariance * H / (H * predicted_covariance * H + R)
-        )
         if predicted_state == 0.0:
             kalman_gain = 0.0
+        updated_covariance = (1 - kalman_gain * H) * predicted_covariance
+        if not filtercond:
+            return predicted_state, updated_covariance
         updated_state = predicted_state + kalman_gain * (
             measurement - H * predicted_state
         )
-        updated_covariance = (1 - kalman_gain * H) * predicted_covariance
         return updated_state, updated_covariance
 
     def filter_conditions(self, current, measurement, cell_num, time_data):
@@ -69,50 +80,68 @@ class KalmanFilter:
 
         """
         if self.model == 9:
-            if (measurement < 0.2 or measurement > 0.999) or (
-                (measurement > 0.6 and measurement < 0.65)
-                and (0.55 < self.initial_state[cell_num] < 0.7)
+            if (
+                (measurement < 0.2)
+                or (
+                    (measurement > 0.6 and measurement < 0.65)
+                    and (0.55 < self.initial_state[cell_num] < 0.7)
+                )
+                or (
+                    (measurement > 1.01)
+                    and (self.initial_state[cell_num] > 1.0)
+                )
             ):
-                if 0.6 < measurement < 0.65:
+                if 0.6 < measurement < 0.65 or (measurement > 1.01):
                     self.__kf_key[cell_num] += abs(current / self.capacity) * (
                         time_data / 3600
                     )
 
-                if measurement < 0.2 or measurement > 0.999:
+                if measurement < 0.2:
                     self.__kf_key[cell_num] = 0
-                    measurement = measurement
-                    if self.__kf_key[cell_num] < (0.005):
-                        return True
-                    else:
-                        return False
+                if self.__kf_key[cell_num] < (0.001):
+                    return True
+                else:
+                    return False
             else:
                 return False
 
     def __model_recalibrator(self, voltages):
-        if self.model == 9:
+        if self.model == 9 or self.model == 6:
+            reflag = True
+            for ce in voltages:
+                if not ((ce < 3.25) and (ce > 3.35)):
+                    reflag = False
+                    break
+            if reflag:
+                self.__recal_flag = True
+        else:
+            self.__recal_flag = True
+        if self.__recal_flag:
             for c_no in range(len(voltages)):
-                if voltages[c_no] < 3.25 or voltages[c_no] > 3.35:
-                    self.initial_state[c_no] = float(
-                        np.interp(voltages[c_no], self.y3, self.x3)
-                    )
-                    self.initial_covariance[c_no] = 1000
+                self.initial_state[c_no] = np.float32(
+                    ip.interp(voltages[c_no], self.y3, self.x3)
+                )
+                self.initial_covariance[c_no] = 1000
 
     def process_filter(
         self,
-        cumulative_time_c,
-        voltages_c,
-        current_c,
+        pim_df,
         interpolation=False,
         period=0.1,
         soh_value=None,
         tune_parameters=None,
     ):
-        cumulative_time = pd.Series(cumulative_time_c)
-        voltages = [pd.Series(volt) for volt in voltages_c]
-        current = pd.Series(current_c)
+        voltages_c = [
+            pim_df.iloc[:, p_col] for p_col in range(2, pim_df.shape[1])
+        ]
+        current_c = pim_df.iloc[:, 1]
+        cumulative_time_c = pim_df.iloc[:, 0]
+        cumulative_time = np.array(cumulative_time_c)
+        voltages = [np.array(volt) for volt in voltages_c]
+        current = np.array(current_c)
         volts = np.array(voltages).T
         self.initial_state = [
-            np.interp(voltage.iloc[0], self.y3, self.x3) for voltage in voltages
+            ip.interp(voltage[0], self.y3, self.x3) for voltage in voltages
         ]
         self.initial_covariance = [1000 for _ in range(len(voltages))]
 
@@ -133,39 +162,39 @@ class KalmanFilter:
         )
 
         filtered_values = [self.initial_state.copy()]
-        measures = [self.initial_state]
-        full_measurements = [self.initial_state]
-        sohs = [self.__soh_value]
+        measures = [self.initial_state.copy()]
+        full_measurements = [self.initial_state.copy()]
+        sohs = [self.__soh_value.copy()]
         if tune_parameters:
             self.Q = tune_parameters[0]
             self.R = tune_parameters[1]
 
         if interpolation:
-            time = pd.Series(np.arange(0, cumulative_time.iloc[-1], period))
-            current = pd.Series(np.interp(time, cumulative_time, current))
+            time = np.array(np.arange(0, cumulative_time[-1], period))
+            current = np.array(ip.interp(time, cumulative_time, current))
             voltages = [
-                pd.Series(np.interp(time, cumulative_time, voltage))
+                np.array(ip.interp(time, cumulative_time, voltage))
                 for voltage in voltages
             ]
         else:
             time = cumulative_time
 
-        time_data = time.diff().fillna(0)  # seconds
+        time_data = np.diff(time, prepend=0)  # seconds
         t = 0
         for i in range(1, len(time)):
-            if abs(current.iloc[i]) <= 0.5:
-                current.iloc[i] = 0.0
+            if abs(current[i]) <= 0.5:
+                current[i] = 0.0
             measure = []
             resistances = []
             for c_no in range(len(voltages)):
-                res = np.interp(
+                res = ip.interp(
                     resistance_calculation(
                         {
                             "capacity": self.capacity,
                             "num_cells_parallel": self.num_cells_parallel,
                         },
-                        float(voltages[c_no].iloc[i]),
-                        float(current.iloc[i]) / self.num_cells_parallel,
+                        np.float32(voltages[c_no][i]),
+                        np.float32(current[i]) / self.num_cells_parallel,
                         c_no,
                         self.__soh_value,
                         self.model,
@@ -174,12 +203,12 @@ class KalmanFilter:
                     self.x3,
                 )
                 if self.initial_state[c_no] != 0:
-                    self.capacity = float(self.capacity)
-                    self.__soh_value[c_no] = float(self.__soh_value[c_no])
-                    current.iloc[i - 1] = float(current.iloc[i - 1])
-                    time_data.iloc[i - 1] = float(time_data.iloc[i - 1])
+                    self.capacity = np.float32(self.capacity)
+                    self.__soh_value[c_no] = np.float32(self.__soh_value[c_no])
+                    current[i - 1] = np.float32(current[i - 1])
+                    time_data[i - 1] = np.float32(time_data[i - 1])
                     F = 1 + (
-                        ((current.iloc[i - 1]) * time_data.iloc[i - 1])
+                        ((current[i - 1]) * time_data[i - 1])
                         / (
                             (self.capacity * self.__soh_value[c_no])
                             * 3600
@@ -187,53 +216,46 @@ class KalmanFilter:
                         )
                     )
                 else:
-                    F = ((current.iloc[i - 1]) * time_data.iloc[i - 1]) / (
+                    F = ((current[i - 1]) * time_data[i - 1]) / (
                         (self.capacity * self.__soh_value[c_no]) * 3600
                     )
-
-                if self.initial_state[c_no] != 0:
-                    self.initial_state[c_no] = (
-                        F * self.initial_state[c_no]
-                    )  # Coulomb Counting to next SOC
-                else:
-                    self.initial_state[c_no] += F
+                filtercond = self.filter_conditions(
+                    current[i], res, c_no, time_data[i]
+                )
                 resistances.append(res)
-                if self.model == 9:
-                    # if False: # Enable this for coloumb counting only
-                    if self.filter_conditions(
-                        current.iloc[i], res, c_no, time_data.iloc[i]
-                    ):
-                        (
-                            self.initial_state[c_no],
-                            self.initial_covariance[c_no],
-                        ) = self.update_kalman_filter(
-                            res,
-                            self.initial_state[c_no],
-                            self.initial_covariance[c_no],
-                            F,
-                            self.H,
-                            self.Q,
-                            self.R,
-                        )
-                        measure.append(res)
-                    else:
-                        measure.append(self.initial_state[c_no])
+                (
+                    self.initial_state[c_no],
+                    self.initial_covariance[c_no],
+                ) = self.update_kalman_filter(
+                    res,
+                    self.initial_state[c_no],
+                    self.initial_covariance[c_no],
+                    F,
+                    self.H,
+                    self.Q,
+                    self.R,
+                    filtercond,
+                )
+
+                if filtercond:
+                    measure.append(res)
+                else:
+                    measure.append(self.initial_state[c_no])
 
             measures.append(measure.copy())
             full_measurements.append(resistances.copy())
-            if abs(current.iloc[i]) == 0.0:
-                t += time_data.iloc[i]
+            if abs(current[i]) == 0.0:
+                t += time_data[i]
             else:
                 t = 0
 
             if t > 900:
-                self.__recal_flag = True
                 self.__model_recalibrator(volts[i])
                 t = 0
 
             self.__soh_value = soh_processor.soh_estimator(
-                current.iloc[i],
-                time_data.iloc[i],
+                current[i],
+                time_data[i],
                 volts[i],
                 self.__recal_flag,
                 self.initial_state,
@@ -243,21 +265,16 @@ class KalmanFilter:
                 self.__recal_flag = False
             filtered_values.append(self.initial_state.copy())
             sohs.append(self.__soh_value.copy())
+            if self.__recal_flag:
+                self.__recal_flag = False
         filtered_values = list(map(list, zip(*filtered_values)))
         measures = list(map(list, zip(*measures)))
         full_measurements = list(map(list, zip(*full_measurements)))
         sohs = list(map(list, zip(*sohs)))
-        self.__soh_value = [1.0 for i in range(self.num_cells_series)]
-        self.__kf_key = [0.0 for i in range(self.num_cells_series)]
+        self.__soh_value = [1.0 for i in range(int(self.num_cells_series))]
+        self.__kf_key = [0.0 for i in range(int(self.num_cells_series))]
         self.recal_flag = False
-        self.soc = filtered_values
-        self.used_measurements = measures
-        self.measurements = full_measurements
-        self.soh = sohs
-
-
-# if __name__ == "__main__":
-#     filter=KalmanFilter(model=9)
-#     filter.process_filter(voltages_c=[[1,2,3,4,5,6,7,8,9,10],[1,2,3,4,5,6,7,8,9,10]], current_c=[1,2,3,4,5,6,7,8,9,10],cumulative_time_c=[1,2,3,4,5,6,7,8,9,10])
-#     print(filter.soc)
-#     print(filter.soh)
+        self.soc = [pd.Series(fil) for fil in filtered_values]
+        self.used_measurements = [pd.Series(mes) for mes in measures]
+        self.measurements = [pd.Series(mes) for mes in full_measurements]
+        self.soh = [pd.Series(s) for s in sohs]

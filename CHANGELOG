@@ -25,3 +25,8 @@
 ### Added
 - Reduced accssible functions to 6
 - Improved documentation
+
+## [0.1.4] - 2025-01-21
+### Added
+- interpolation condition in pim_processor
+- python model runner 9
