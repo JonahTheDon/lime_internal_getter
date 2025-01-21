@@ -1,9 +1,9 @@
 import numpy as np
 import pandas as pd
-from parameters import get_model_9_params
-from resistance import resistance_calculation
-import soh
-import interpolate as ip
+from .parameters import get_model_9_params
+from .resistance import resistance_calculation
+from . import soh
+from . import interpolate as ip
 
 
 class KalmanFilter:

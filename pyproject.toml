@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lime_internal_getter"
-version = "0.1.4"
+version = "0.1.5"
 authors = [
   { name="Harisankar Suresh", email="harisankar.suresh@lime.ai" },
 ]
@@ -16,6 +16,10 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+
+# Include your own package
+[tool.setuptools.packages.find]
+where = [".", "./lime_internal_getter"]
 
 dependencies = [
     "pandas>=2.0.3",

@@ -9,7 +9,7 @@ from datetime import timedelta, date
 import numpy as np
 import plotly.graph_objects as go
 from tqdm import tqdm
-import model
+from . import model
 
 home = os.path.expanduser("~")
 filename = ".ligrc"

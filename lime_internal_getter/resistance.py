@@ -1,5 +1,5 @@
 import numpy as np
-import interpolate as ip
+from . import interpolate as ip
 
 
 def eta_IR_model(model):
