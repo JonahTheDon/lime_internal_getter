@@ -517,6 +517,7 @@ class PIMProcessor:
         end_date=None,
         soh_value=None,
         interpolation=False,
+        error_display=True,
     ):
         """
         Fetches and processes data for each serial number and appends SOC and SOH
@@ -619,9 +620,10 @@ class PIMProcessor:
                         minn_soh,
                     )
                 except Exception as e:
-                    print(
-                        f"Error reading final_soh_iot_data.csv for {ser}: {e}"
-                    )
+                    if error_display:
+                        print(
+                            f"Error reading final_soh_iot_data.csv for {ser}: {e}"
+                        )
             # Convert back to real timestamps and keep track of serial number
             df["Cumulative Time"] = pd.to_datetime(time_data, unit="s")
             df["Serial_no"] = ser
@@ -909,9 +911,9 @@ class PIMProcessor:
             result = list(result)
             for res in range(len(result)):
                 result[res] = list(result[res])
-            self.bms_error.append([abs(pd.Series(result[1]))])
-            self.pim_error.append([abs(pd.Series(result[2]))])
-            self.correction_time.append([pd.Series(result[3])])
+            self.bms_error.append(abs(pd.Series(result[1])))
+            self.pim_error.append(abs(pd.Series(result[2])))
+            self.correction_time.append(pd.Series(result[3]))
             if plot and result[1]:
                 fig = go.Figure(
                     layout=dict(
