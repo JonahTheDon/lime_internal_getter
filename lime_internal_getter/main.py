@@ -528,11 +528,10 @@ class PIMProcessor:
         k = 0
         for ser in tqdm(serial_numbers, desc="Processing Serial Numbers"):
             params = (ser, start_date, end_date)
-            pim_df = get_pimdata(
-                params[0], params[1], params[2], interpolation=interpolation
-            )
-            self._pim_df = pim_df
             if self.directory_path:
+                pim_df = get_pimdata(
+                    params[0], params[1], params[2], interpolation=interpolation
+                )
                 # 1) Fetch IoT data and save as CSV
                 try:
                     pim_df.to_csv(
@@ -899,8 +898,9 @@ class PIMProcessor:
         """
         Use for plotting
         """
-        bms_error = []
-        pim_error = []
+        self.bms_error = []
+        self.pim_error = []
+        self.correction_time = []
         for ser in tqdm(
             self.fdf["Serial_no"].unique(),
             desc="Calculating corrections for serial numbers",
@@ -909,8 +909,9 @@ class PIMProcessor:
             result = list(result)
             for res in range(len(result)):
                 result[res] = list(result[res])
-            bms_error.append([abs(pd.Series(result[1]))])
-            pim_error.append([abs(pd.Series(result[2]))])
+            self.bms_error.append([abs(pd.Series(result[1]))])
+            self.pim_error.append([abs(pd.Series(result[2]))])
+            self.correction_time.append([pd.Series(result[3])])
             if plot:
                 fig = go.Figure(
                     layout=dict(
@@ -943,5 +944,3 @@ class PIMProcessor:
                     fig.show(renderer="browser")
                 else:
                     fig.show()
-        self.bms_error = bms_error
-        self.pim_error = pim_error
