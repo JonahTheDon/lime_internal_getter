@@ -912,7 +912,7 @@ class PIMProcessor:
             self.bms_error.append([abs(pd.Series(result[1]))])
             self.pim_error.append([abs(pd.Series(result[2]))])
             self.correction_time.append([pd.Series(result[3])])
-            if plot:
+            if plot and result[1]:
                 fig = go.Figure(
                     layout=dict(
                         title="Error comparison during SOC correction in bms and PIM for "
