@@ -9,7 +9,7 @@ from datetime import timedelta, date
 import numpy as np
 import plotly.graph_objects as go
 from tqdm import tqdm
-from . import model
+from .model import KalmanFilter
 
 home = os.path.expanduser("~")
 filename = ".ligrc"
@@ -505,6 +505,10 @@ class PIMProcessor:
         self.final_table = None
         self.__odf_soc = None
         self.__odf_soh = None
+        if self.model in [3, 6, 8, 9]:
+            self.__lfp_model = True
+        else:
+            self.__lfp_model = False
 
     def fetch_and_process_data(
         self,
@@ -527,6 +531,7 @@ class PIMProcessor:
             pim_df = get_pimdata(
                 params[0], params[1], params[2], interpolation=interpolation
             )
+            self._pim_df = pim_df
             if self.directory_path:
                 # 1) Fetch IoT data and save as CSV
                 try:
@@ -571,13 +576,19 @@ class PIMProcessor:
                     maxx_soc = odf_soc.iloc[:, 1:].max(axis=1)
                     minn_soc = odf_soc.iloc[:, 1:].min(axis=1)
                     df["PIM_Soc"] = np.interp(
-                        df["Cumulative Time"], odf_soc[0], odf_soc[3]
+                        df["Cumulative Time"],
+                        df["Cumulative Time"][1:],
+                        odf_soc[3],
                     )
                     df["PIM_maxSoc"] = np.interp(
-                        df["Cumulative Time"], odf_soc[0], maxx_soc
+                        df["Cumulative Time"],
+                        df["Cumulative Time"][1:],
+                        maxx_soc,
                     )
                     df["PIM_minSoc"] = np.interp(
-                        df["Cumulative Time"], odf_soc[0], minn_soc
+                        df["Cumulative Time"],
+                        df["Cumulative Time"][1:],
+                        minn_soc,
                     )
                 except Exception as e:
                     print(
@@ -594,13 +605,19 @@ class PIMProcessor:
                     maxx_soh = odf_soh.iloc[:, 1:].max(axis=1)
                     minn_soh = odf_soh.iloc[:, 1:].min(axis=1)
                     df["PIM_Soh"] = np.interp(
-                        df["Cumulative Time"], odf_soh[0], odf_soh[3]
+                        df["Cumulative Time"],
+                        df["Cumulative Time"][1:],
+                        odf_soh[3],
                     )
                     df["PIM_maxSoh"] = np.interp(
-                        df["Cumulative Time"], odf_soh[0], maxx_soh
+                        df["Cumulative Time"],
+                        df["Cumulative Time"][1:],
+                        maxx_soh,
                     )
                     df["PIM_minSoh"] = np.interp(
-                        df["Cumulative Time"], odf_soh[0], minn_soh
+                        df["Cumulative Time"],
+                        df["Cumulative Time"][1:],
+                        minn_soh,
                     )
                 except Exception as e:
                     print(
@@ -611,8 +628,10 @@ class PIMProcessor:
             df["Serial_no"] = ser
             # Python Model runner
             if self.model == 9:
-                kf = model.KalmanFilter(self.model)
-                kf.process_filter(pim_df, soh_value=soh_value)
+                kf = KalmanFilter(self.model)
+                kf.process_filter(
+                    pim_df[1:].reset_index(drop=True), soh_value=soh_value
+                )
                 df["Python Soc"] = kf.soc[2] * 100
                 kfd = pd.DataFrame(kf.soc).T
                 df["Python Max Soc"] = (kfd.max(axis=1)) * 100
@@ -621,6 +640,8 @@ class PIMProcessor:
                 kfh = pd.DataFrame(kf.soh).T
                 df["Python Max Soh"] = (kfh.max(axis=1)) * 100
                 df["Python Min Soh"] = (kfh.min(axis=1)) * 100
+                df["Used Measurements Soc"] = kf.used_measurements[2] * 100
+                df["Measurements Soc"] = kf.measurements[2] * 100
 
             if k > 0:
                 self.fdf = pd.concat([self.fdf, df.copy()])
@@ -774,6 +795,18 @@ class PIMProcessor:
                         )
             fig_soh.show(renderer=renderer)
 
+    def __correction_conditions(self, soc1, soc2, soc3=None):
+        if self.__lfp_model:
+            if soc3:
+                if (soc1 < 20) and (soc2 < 20) and (soc3 < 20):
+                    return True
+            else:
+                if (soc1 < 20) and (soc2 < 20):
+                    return True
+            return False
+        else:
+            return True
+
     def __process_row_for_errors(self, i):
         global df1, odf
         serial_num = i
@@ -823,37 +856,46 @@ class PIMProcessor:
                 and (abs(df1["batCurrent"].iloc[o + 10]) < 0.5)
             ):
                 if self.directory_path:
-                    if (
-                        df1["trueSoc"].iloc[o + 10] != 0
-                        and df1["cellSoc3E"].iloc[o + 10] != 0
-                        and df1["trueSoc"].iloc[o] != 0
-                        and df1["PIM_SOC"].iloc[o] != 0
-                        and df1["PIM_SOC"].iloc[o + 10] != 0
+                    if self.__correction_conditions(
+                        df1["trueSoc"].iloc[o + 10],
+                        df1["cellSoc3E"].iloc[o + 10],
+                        df1["PIM_SOC"].iloc[o + 10],
                     ):
-                        error1.append(
-                            df1["trueSoc"].iloc[o + 10]
-                            - df1["cellSoc3E"].iloc[o]
-                        )
-                        error2.append(
-                            df1["trueSoc"].iloc[o + 10]
-                            - (df1["PIM_SOC"] * 100).iloc[o]
-                        )
-                        time1.append(df1["timeStamp"].iloc[o])
+                        if (
+                            df1["trueSoc"].iloc[o + 10] != 0
+                            and df1["cellSoc3E"].iloc[o + 10] != 0
+                            and df1["trueSoc"].iloc[o] != 0
+                            and df1["PIM_SOC"].iloc[o] != 0
+                            and df1["PIM_SOC"].iloc[o + 10] != 0
+                        ):
+                            error1.append(
+                                df1["trueSoc"].iloc[o + 10]
+                                - df1["cellSoc3E"].iloc[o]
+                            )
+                            error2.append(
+                                df1["trueSoc"].iloc[o + 10]
+                                - (df1["PIM_SOC"] * 100).iloc[o]
+                            )
+                            time1.append(df1["timeStamp"].iloc[o])
                 else:
-                    if (
-                        df1["trueSoc"].iloc[o + 10] != 0
-                        and df1["cellSoc3E"].iloc[o + 10] != 0
-                        and df1["trueSoc"].iloc[o] != 0
+                    if self.__correction_conditions(
+                        df1["trueSoc"].iloc[o + 10],
+                        df1["cellSoc3E"].iloc[o + 10],
                     ):
-                        error1.append(
-                            df1["trueSoc"].iloc[o + 10]
-                            - df1["cellSoc3E"].iloc[o]
-                        )
-                        time1.append(df1["timeStamp"].iloc[o])
+                        if (
+                            df1["trueSoc"].iloc[o + 10] != 0
+                            and df1["cellSoc3E"].iloc[o + 10] != 0
+                            and df1["trueSoc"].iloc[o] != 0
+                        ):
+                            error1.append(
+                                df1["trueSoc"].iloc[o + 10]
+                                - df1["cellSoc3E"].iloc[o]
+                            )
+                            time1.append(df1["timeStamp"].iloc[o])
 
         return serial_num, error1, error2, time1
 
-    def correction_monitor(self, renderer="browser"):
+    def correction_monitor(self, renderer="browser", plot=True):
         """
         Use for plotting
         """
@@ -869,35 +911,37 @@ class PIMProcessor:
                 result[res] = list(result[res])
             bms_error.append([abs(pd.Series(result[1]))])
             pim_error.append([abs(pd.Series(result[2]))])
-            fig = go.Figure(
-                layout=dict(
-                    title="Error comparison during SOC correction in bms and PIM for "
-                    + str(ser)
+            if plot:
+                fig = go.Figure(
+                    layout=dict(
+                        title="Error comparison during SOC correction in bms and PIM for "
+                        + str(ser)
+                    )
                 )
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=pd.to_datetime(result[3]),
-                    y=abs(pd.Series(result[1])),
-                    name="BMS SOH :" + str(self.fdf["cellSoh3E"].iloc[-1]),
-                )
-            )
-            if self.directory_path:
                 fig.add_trace(
                     go.Scatter(
                         x=pd.to_datetime(result[3]),
-                        y=abs(pd.Series(result[2])),
-                        name="PIM SOH :"
-                        + str(
-                            np.round(
-                                self.fdf["PIM_Soh"].iloc[-1] * 100, decimals=0
-                            )
-                        ),
+                        y=abs(pd.Series(result[1])),
+                        name="BMS SOH :" + str(self.fdf["cellSoh3E"].iloc[-1]),
                     )
                 )
-            if renderer:
-                fig.show(renderer="browser")
-            else:
-                fig.show()
+                if self.directory_path:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=pd.to_datetime(result[3]),
+                            y=abs(pd.Series(result[2])),
+                            name="PIM SOH :"
+                            + str(
+                                np.round(
+                                    self.fdf["PIM_Soh"].iloc[-1] * 100,
+                                    decimals=0,
+                                )
+                            ),
+                        )
+                    )
+                if renderer:
+                    fig.show(renderer="browser")
+                else:
+                    fig.show()
         self.bms_error = bms_error
         self.pim_error = pim_error

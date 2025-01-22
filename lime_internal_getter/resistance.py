@@ -1,4 +1,5 @@
 import numpy as np
+from . import interpolate as ip
 
 
 def eta_IR_model(model):
@@ -179,7 +180,7 @@ def resistance_calculation(params, voltage, current, cell_num, soh, model):
                         current
                         / (
                             2
-                            * np.interp(
+                            * ip.interp(
                                 (current / (capacity * soh[cell_num])),
                                 c_rates,
                                 ejs,
@@ -189,7 +190,7 @@ def resistance_calculation(params, voltage, current, cell_num, soh, model):
                     )
                 )
                 - (
-                    np.interp(
+                    ip.interp(
                         current / (capacity * soh[cell_num]), c_rates, ecirs
                     )
                     * 0.001
@@ -205,7 +206,7 @@ def resistance_calculation(params, voltage, current, cell_num, soh, model):
                         current
                         / (
                             2
-                            * np.interp(
+                            * ip.interp(
                                 abs(current / (capacity * soh[cell_num])),
                                 dc_rates,
                                 edjs,
@@ -216,7 +217,7 @@ def resistance_calculation(params, voltage, current, cell_num, soh, model):
                     )
                 )
                 - (
-                    np.interp(
+                    ip.interp(
                         abs(current / (capacity * soh[cell_num])),
                         dc_rates,
                         edirs,
