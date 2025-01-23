@@ -555,7 +555,8 @@ class PIMProcessor:
             try:
                 df = get_data(params[0], params[1], params[2])
             except Exception as e:
-                print(f"Error fetching extended data for {ser}: {e}")
+                if error_display:
+                    print(f"Error fetching extended data for {ser}: {e}")
                 continue
 
             df["Time diff"] = (
@@ -620,10 +621,9 @@ class PIMProcessor:
                         minn_soh,
                     )
                 except Exception as e:
-                    if error_display:
-                        print(
-                            f"Error reading final_soh_iot_data.csv for {ser}: {e}"
-                        )
+                    print(
+                        f"Error reading final_soh_iot_data.csv for {ser}: {e}"
+                    )
             # Convert back to real timestamps and keep track of serial number
             df["Cumulative Time"] = pd.to_datetime(time_data, unit="s")
             df["Serial_no"] = ser
@@ -903,17 +903,18 @@ class PIMProcessor:
         self.bms_error = []
         self.pim_error = []
         self.correction_time = []
+        self.serial_num = []
         for ser in tqdm(
             self.fdf["Serial_no"].unique(),
             desc="Calculating corrections for serial numbers",
         ):
             result = self.__process_row_for_errors(ser)
             result = list(result)
-            for res in range(len(result)):
-                result[res] = list(result[res])
-            self.bms_error.append(abs(pd.Series(result[1])))
-            self.pim_error.append(abs(pd.Series(result[2])))
-            self.correction_time.append(pd.Series(result[3]))
+            if result[1]:
+                self.bms_error.append(abs(pd.Series(result[1])))
+                self.pim_error.append(abs(pd.Series(result[2])))
+                self.correction_time.append(pd.Series(result[3]))
+                self.serial_num.append(ser)
             if plot and result[1]:
                 fig = go.Figure(
                     layout=dict(
