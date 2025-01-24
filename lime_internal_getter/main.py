@@ -518,6 +518,7 @@ class PIMProcessor:
         soh_value=None,
         interpolation=False,
         error_display=True,
+        fw=None,
     ):
         """
         Fetches and processes data for each serial number and appends SOC and SOH
@@ -554,6 +555,17 @@ class PIMProcessor:
             # 3) Get the combined DataFrame from internal storage
             try:
                 df = get_data(params[0], params[1], params[2])
+                try:
+                    if fw:
+                        if any(
+                            firmware not in fw
+                            for firmware in df.fwVersion.unique()
+                        ):
+                            raise ValueError("Firmware version not detected")
+                except Exception as e:
+                    if error_display:
+                        print(f"Skipping {ser} due to firmware issue: {e}")
+                    continue
             except Exception as e:
                 if error_display:
                     print(f"Error fetching extended data for {ser}: {e}")
@@ -811,6 +823,7 @@ class PIMProcessor:
     def __process_row_for_errors(self, i):
         global df1, odf
         serial_num = i
+        soc_cat = np.arange(0, 100, 10)
         if self.directory_path:
             if self.__odf_soc is not None:
                 odf = self.__odf_soc
@@ -847,6 +860,7 @@ class PIMProcessor:
         error1 = []
         time1 = []
         error2 = []
+        soc_range = []
         for o in range(df1.shape[0] - 10):
             if abs(df1["batCurrent"].iloc[o]) < 0.5:
                 timer += df1["Time diff"].iloc[o]
@@ -873,6 +887,10 @@ class PIMProcessor:
                                 df1["trueSoc"].iloc[o + 10]
                                 - df1["cellSoc3E"].iloc[o]
                             )
+                            for soc_c in soc_cat:
+                                if df1["trueSoc"].iloc[o + 10] > soc_c:
+                                    soc_range.append(int(soc_c) + 10)
+                                    break
                             error2.append(
                                 df1["trueSoc"].iloc[o + 10]
                                 - (df1["PIM_SOC"] * 100).iloc[o]
@@ -892,9 +910,13 @@ class PIMProcessor:
                                 df1["trueSoc"].iloc[o + 10]
                                 - df1["cellSoc3E"].iloc[o]
                             )
+                            for soc_c in soc_cat:
+                                if df1["trueSoc"].iloc[o + 10] > soc_c:
+                                    soc_range.append(int(soc_c) + 10)
+                                    break
                             time1.append(df1["timeStamp"].iloc[o])
 
-        return serial_num, error1, error2, time1
+        return serial_num, error1, error2, time1, soc_range
 
     def correction_monitor(self, renderer="browser", plot=True):
         """
@@ -904,6 +926,7 @@ class PIMProcessor:
         self.pim_error = []
         self.correction_time = []
         self.serial_num = []
+        self.soc_range = []
         for ser in tqdm(
             self.fdf["Serial_no"].unique(),
             desc="Calculating corrections for serial numbers",
@@ -915,6 +938,7 @@ class PIMProcessor:
                 self.pim_error.append(abs(pd.Series(result[2])))
                 self.correction_time.append(pd.Series(result[3]))
                 self.serial_num.append(ser)
+                self.soc_range.append(pd.Series(result[4]))
             if plot and result[1]:
                 fig = go.Figure(
                     layout=dict(

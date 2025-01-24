@@ -4,6 +4,7 @@ from lime_internal_getter.main import (
     get_fwdata,
     get_data,
     pim_make,
+    get_datas,
     PIMProcessor,
     KalmanFilter,
 )

@@ -6,3 +6,5 @@ json
 ruff
 tqdm
 plotly
+pyarrow
+fastparquet
