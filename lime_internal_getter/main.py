@@ -186,7 +186,7 @@ def get_fwdata(fWVersion="8183D", battery_prefix="MH"):
     """
     Use for getting list of packs with different firmware versions
     import lime_internal_getter as ig
-    eg: df= ig.get_fwdata(fWVersion="8183D",battery_prefix="MH",date="2024-11-15")
+    eg: df= ig.get_fwdata(fWVersion="8183D",battery_prefix="MH")
     """
     headers = headers = {
         "Authorization": f"{auth_key}",
@@ -528,7 +528,9 @@ class PIMProcessor:
         if not end_date:
             end_date = start_date
         k = 0
-        for ser in tqdm(serial_numbers, desc="Processing Serial Numbers"):
+        for ser in tqdm(
+            serial_numbers, desc="Processing Serial Numbers", leave=False
+        ):
             params = (ser, start_date, end_date)
             if self.directory_path:
                 pim_df = get_pimdata(
@@ -590,17 +592,17 @@ class PIMProcessor:
                     minn_soc = odf_soc.iloc[:, 1:].min(axis=1)
                     df["PIM_Soc"] = np.interp(
                         df["Cumulative Time"],
-                        df["Cumulative Time"][1:],
+                        odf_soc[0].shift().fillna(0),
                         odf_soc[3],
                     )
                     df["PIM_maxSoc"] = np.interp(
                         df["Cumulative Time"],
-                        df["Cumulative Time"][1:],
+                        odf_soc[0].shift().fillna(0),
                         maxx_soc,
                     )
                     df["PIM_minSoc"] = np.interp(
                         df["Cumulative Time"],
-                        df["Cumulative Time"][1:],
+                        odf_soc[0].shift().fillna(0),
                         minn_soc,
                     )
                 except Exception as e:
@@ -619,17 +621,17 @@ class PIMProcessor:
                     minn_soh = odf_soh.iloc[:, 1:].min(axis=1)
                     df["PIM_Soh"] = np.interp(
                         df["Cumulative Time"],
-                        df["Cumulative Time"][1:],
+                        odf_soh[0].shift().fillna(0),
                         odf_soh[3],
                     )
                     df["PIM_maxSoh"] = np.interp(
                         df["Cumulative Time"],
-                        df["Cumulative Time"][1:],
+                        odf_soh[0].shift().fillna(0),
                         maxx_soh,
                     )
                     df["PIM_minSoh"] = np.interp(
                         df["Cumulative Time"],
-                        df["Cumulative Time"][1:],
+                        odf_soh[0].shift().fillna(0),
                         minn_soh,
                     )
                 except Exception as e:
@@ -674,7 +676,9 @@ class PIMProcessor:
         self.final_table = None
         k = 0
         for ser in tqdm(
-            self.fdf["Serial_no"].unique(), desc="Generating Final Table"
+            self.fdf["Serial_no"].unique(),
+            desc="Generating Final Table",
+            leave=False,
         ):
             table = self.fdf[self.fdf["Serial_no"] == ser][:-2:-1].copy()
             if self.directory_path:
@@ -820,10 +824,10 @@ class PIMProcessor:
         else:
             return True
 
-    def __process_row_for_errors(self, i):
+    def __process_row_for_errors(self, i, devi=300):
         global df1, odf
         serial_num = i
-        soc_cat = np.arange(0, 100, 10)
+        soc_cat = np.arange(0, 100, 5)
         if self.directory_path:
             if self.__odf_soc is not None:
                 odf = self.__odf_soc
@@ -861,7 +865,8 @@ class PIMProcessor:
         time1 = []
         error2 = []
         soc_range = []
-        for o in range(df1.shape[0] - 10):
+        dev = []
+        for o in range(df1.shape[0] - devi):
             if abs(df1["batCurrent"].iloc[o]) < 0.5:
                 timer += df1["Time diff"].iloc[o]
             else:
@@ -875,50 +880,81 @@ class PIMProcessor:
                         df1["trueSoc"].iloc[o + 10],
                         df1["cellSoc3E"].iloc[o + 10],
                         df1["PIM_SOC"].iloc[o + 10],
+                    ) and (
+                        df1["trueSoc"].iloc[o + 10] != 0
+                        and df1["cellSoc3E"].iloc[o + 10] != 0
+                        and df1["trueSoc"].iloc[o] != 0
+                        and df1["PIM_SOC"].iloc[o] != 0
+                        and df1["PIM_SOC"].iloc[o + 10] != 0
                     ):
-                        if (
-                            df1["trueSoc"].iloc[o + 10] != 0
-                            and df1["cellSoc3E"].iloc[o + 10] != 0
-                            and df1["trueSoc"].iloc[o] != 0
-                            and df1["PIM_SOC"].iloc[o] != 0
-                            and df1["PIM_SOC"].iloc[o + 10] != 0
-                        ):
-                            error1.append(
-                                df1["trueSoc"].iloc[o + 10]
-                                - df1["cellSoc3E"].iloc[o]
-                            )
-                            for soc_c in soc_cat:
-                                if df1["trueSoc"].iloc[o + 10] > soc_c:
-                                    soc_range.append(int(soc_c) + 10)
-                                    break
-                            error2.append(
-                                df1["trueSoc"].iloc[o + 10]
-                                - (df1["PIM_SOC"] * 100).iloc[o]
-                            )
-                            time1.append(df1["timeStamp"].iloc[o])
+                        for soc_c in soc_cat:
+                            if df1["trueSoc"].iloc[o + 10] <= soc_c:
+                                soc_range.append(int(soc_c) + 10)
+                                error1.append(
+                                    df1["trueSoc"].iloc[o + 10]
+                                    - df1["cellSoc3E"].iloc[o]
+                                )
+                                error2.append(
+                                    df1["trueSoc"].iloc[o + 10]
+                                    - (df1["PIM_SOC"] * 100).iloc[o]
+                                )
+                                time1.append(df1["timeStamp"].iloc[o])
+                                time_dev = (
+                                    pd.to_datetime(
+                                        df1["timeStamp"].iloc[o + devi]
+                                    ).as_type("int64")
+                                    / (10**9)
+                                ) - (
+                                    pd.to_datetime(time1[-1]).as_type("int64")
+                                    / (10**9)
+                                )
+                                dev.append(
+                                    (
+                                        df1["trueSoc"].iloc[o + devi]
+                                        - df1["cellSoc3E"].iloc[o + devi]
+                                    )
+                                    / time_dev
+                                )
+                                break
+
                 else:
                     if self.__correction_conditions(
                         df1["trueSoc"].iloc[o + 10],
                         df1["cellSoc3E"].iloc[o + 10],
+                    ) and (
+                        df1["trueSoc"].iloc[o + 10] != 0
+                        and df1["cellSoc3E"].iloc[o + 10] != 0
+                        and df1["trueSoc"].iloc[o] != 0
                     ):
-                        if (
-                            df1["trueSoc"].iloc[o + 10] != 0
-                            and df1["cellSoc3E"].iloc[o + 10] != 0
-                            and df1["trueSoc"].iloc[o] != 0
-                        ):
-                            error1.append(
-                                df1["trueSoc"].iloc[o + 10]
-                                - df1["cellSoc3E"].iloc[o]
-                            )
-                            for soc_c in soc_cat:
-                                if df1["trueSoc"].iloc[o + 10] > soc_c:
-                                    soc_range.append(int(soc_c) + 10)
-                                    break
-                            time1.append(df1["timeStamp"].iloc[o])
+                        for soc_c in soc_cat:
+                            if df1["trueSoc"].iloc[o + 10] <= soc_c:
+                                soc_range.append(int(soc_c))
+                                error1.append(
+                                    df1["trueSoc"].iloc[o + 10]
+                                    - df1["cellSoc3E"].iloc[o]
+                                )
+                                time1.append(df1["timeStamp"].iloc[o])
+                                time_dev = (
+                                    pd.to_datetime(
+                                        df1["timeStamp"].iloc[o + devi]
+                                    ).as_type("int64")
+                                    / (10**9)
+                                ) - (
+                                    pd.to_datetime(time1[-1]).as_type("int64")
+                                    / (10**9)
+                                )
+                                dev.append(
+                                    (
+                                        df1["trueSoc"].iloc[o + devi]
+                                        - df1["cellSoc3E"].iloc[o + devi]
+                                    )
+                                    / time_dev
+                                )
+                                break
 
-        return serial_num, error1, error2, time1, soc_range
+        return serial_num, error1, error2, time1, soc_range, dev
 
-    def correction_monitor(self, renderer="browser", plot=True):
+    def correction_monitor(self, renderer="browser", plot=True, deviation=200):
         """
         Use for plotting
         """
@@ -927,11 +963,13 @@ class PIMProcessor:
         self.correction_time = []
         self.serial_num = []
         self.soc_range = []
+        self.deviation = []
         for ser in tqdm(
             self.fdf["Serial_no"].unique(),
             desc="Calculating corrections for serial numbers",
+            leave=False,
         ):
-            result = self.__process_row_for_errors(ser)
+            result = self.__process_row_for_errors(ser, devi=deviation)
             result = list(result)
             if result[1]:
                 self.bms_error.append(abs(pd.Series(result[1])))
@@ -939,6 +977,7 @@ class PIMProcessor:
                 self.correction_time.append(pd.Series(result[3]))
                 self.serial_num.append(ser)
                 self.soc_range.append(pd.Series(result[4]))
+                self.deviation.append(pd.Series(result[5]))
             if plot and result[1]:
                 fig = go.Figure(
                     layout=dict(
