@@ -902,12 +902,9 @@ class PIMProcessor:
                                 time_dev = (
                                     pd.to_datetime(
                                         df1["timeStamp"].iloc[o + devi]
-                                    ).as_type("int64")
+                                    ).value
                                     / (10**9)
-                                ) - (
-                                    pd.to_datetime(time1[-1]).as_type("int64")
-                                    / (10**9)
-                                )
+                                ) - (pd.to_datetime(time1[-1]).value / (10**9))
                                 dev.append(
                                     (
                                         df1["trueSoc"].iloc[o + devi]
@@ -937,12 +934,9 @@ class PIMProcessor:
                                 time_dev = (
                                     pd.to_datetime(
                                         df1["timeStamp"].iloc[o + devi]
-                                    ).as_type("int64")
+                                    ).value
                                     / (10**9)
-                                ) - (
-                                    pd.to_datetime(time1[-1]).as_type("int64")
-                                    / (10**9)
-                                )
+                                ) - (pd.to_datetime(time1[-1]).value / (10**9))
                                 dev.append(
                                     (
                                         df1["trueSoc"].iloc[o + devi]

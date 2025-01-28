@@ -23,6 +23,11 @@ where = [".", "./lime_internal_getter"]
 
 dependencies = [
     "pandas>=2.0.3",
+    "requests",
+    "tqdm",
+    "plotly",
+    "pyarrow",
+    "fastparquet"
 ]
 
 [project.urls]
