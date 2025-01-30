@@ -41,3 +41,14 @@
 ### Fix
 
 - interpolation error issue of fetch_and_process_data in PIM_Processor when interpolation =True is used
+
+## [0.2.8] -2025-01-30
+
+### Fix
+ - init function for class AbhishekReports
+
+### Added
+
+- small desciption for AbhishekReports
+- accessibility to AbhishekReports
+- Readme desciption update

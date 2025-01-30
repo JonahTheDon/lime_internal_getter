@@ -101,7 +101,7 @@ pim_make("/path/to/directory", model=4, filename="_iot_data.csv")
 
 ### 6. **PIMProcessor** (Class)
 **Description:** Class for processing PIM models and generating reports. (Not required for non-developers of PIM Model) 
-*Use two instantiations of class  for checking soc and soh with 'step' kwargs*
+*results avaiable through some list of data through batch process as list*
 
 **Methods:**
 - `__init__(directory_path, model,step)`: Initializes the processor.
@@ -115,3 +115,45 @@ processor = PIMProcessor("/path/to/directory", model=4)
 processor.fetch_and_process_data([...], "2024-06-27", "2024-06-28")
 processor.correction_monitor()
 print(processor.bms_errors)
+```
+---
+
+### 7. **KalmanFilter** (Class)
+**Description:** Class for running PIM models implemented locally through python
+(Not required for non-developers of PIM Model but can be used) 
+*soc and soh available through internal variable parameters*
+
+**Methods:**
+- `__init__(model)` : Initialises model parameters
+- `process_filter(data)`: Performs Kalman filter for the given data
+    - `data` a dataframe variable which has the structure:
+    `[Time in s,Current(A), Voltage 1 , Voltage2 ....]`
+
+**Example Usage:**
+```python
+kf= ig.KalmanFilter(model=9)
+kf.process_filter(ig.get_pimdata(serialnum,startdate,end_date)) #Put actual parameters here
+print(kf.soc[0])# print soc for cell 1 corresponding to voltage 1 print(kf.soh[0])# print soh for cell 1 corresponding to voltage 1
+
+```
+---
+
+### 8. **AbhishekReports** (Class)
+**Description:** Class for generating reports and corrections scripts for different firmware versions
+
+**Methods:**
+- `__init__(model)`: Generates a variable which has functionality of docx. Use df_todocx to update this and save using document.save(filpath+filename.docx)
+- `df_to_docx(data)` : Use this generate a table in the document for any dataframe
+-  `correction_script(fWlist,model,start_date)` : Use for running correction monitor with different correction scripts in PIMProcessor class for big data in batch mode for processing entire firm like for max errors, errors in soc_ranges etc. .
+**Example Usage:**
+```python
+import pandas as pd
+import lime_internal_getter as ig
+ar=ig.AbhishekReports()
+ar.df_to_docx(pd.read_csv('example.csv',save=True))
+fWlist=[51828]
+ar.correction_script(fWlist,model,start_date)
+print(pd.read_csv('51828.csv'))
+
+```
+---

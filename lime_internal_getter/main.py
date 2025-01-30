@@ -1009,10 +1009,16 @@ class PIMProcessor:
 
 class AbhishekReports:
     """
-    Use this class to generate random shit reports for Abhishek
+    A class to generate reports for Abhishek.
+    Methods
+    -------
+    df_to_docx(data, heading="Table data", save=False, file_name="Table data.docx")
+        Converts a DataFrame to a Word document with a table.
+    correction_script(fWlist, model, start_date, end_date=None, batch_size=30, prefix="", script="soc_range")
+
     """
 
-    def __init(self):
+    def __init__(self):
         self.document = Document()
 
     def df_to_docx(
