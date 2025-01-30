@@ -51,4 +51,11 @@
 
 - small desciption for AbhishekReports
 - accessibility to AbhishekReports
-- Readme desciption update
+- Readme description update
+
+
+## [0.2.9] -2025-01-30
+
+### Fix
+ - correction_script method for AbhishekReports
+ - Improved readme examples

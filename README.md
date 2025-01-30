@@ -131,9 +131,11 @@ print(processor.bms_errors)
 
 **Example Usage:**
 ```python
+import lime_internal_getter as ig
 kf= ig.KalmanFilter(model=9)
-kf.process_filter(ig.get_pimdata(serialnum,startdate,end_date)) #Put actual parameters here
-print(kf.soc[0])# print soc for cell 1 corresponding to voltage 1 print(kf.soh[0])# print soh for cell 1 corresponding to voltage 1
+kf.process_filter(ig.get_pimdata("863674072212077",'2025-01-26')) #Put actual parameters here
+print(kf.soc[0])# print soc for cell 1 corresponding to voltage 1 
+print(kf.soh[0])# print soh for cell 1 corresponding to voltage 1
 
 ```
 ---
@@ -150,9 +152,10 @@ print(kf.soc[0])# print soc for cell 1 corresponding to voltage 1 print(kf.soh[0
 import pandas as pd
 import lime_internal_getter as ig
 ar=ig.AbhishekReports()
-ar.df_to_docx(pd.read_csv('example.csv',save=True))
-fWlist=[51828]
-ar.correction_script(fWlist,model,start_date)
+ar.df_to_docx(pd.DataFrame([1,2,3],[1.1,2.5,4.2]),save=True)
+fWlist=["51828"]
+ar.correction_script(fWlist,model=3,start_date="2025-01-21")
+#### Process for atleast 5 Min
 print(pd.read_csv('51828.csv'))
 
 ```

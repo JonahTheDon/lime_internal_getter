@@ -1049,13 +1049,14 @@ class AbhishekReports:
             doc.save(file_name)
 
     def correction_script(
+        self,
         fWlist,
         model,
         start_date,
         end_date=None,
         batch_size=30,
         prefix="",
-        script="soc_range",
+        script="all",
     ):
         """
         def correction_script(fWlist, model, start_date, end_date=None, batch_size=30, prefix="", script='soc_range'):
