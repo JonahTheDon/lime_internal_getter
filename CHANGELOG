@@ -30,3 +30,14 @@
 ### Added
 - interpolation condition in pim_processor
 - python model runner 9
+
+## [0.2.7] -2025-01-30
+### Added
+- class Abhishek reports for generating reports
+- class PIMProcessor
+    - added parameters ,deviations and soc ranges as parameters
+- pyarrow,fastparquet and python-docx in requirements for package installation 
+
+### Fix
+
+- interpolation error issue of fetch_and_process_data in PIM_Processor when interpolation =True is used

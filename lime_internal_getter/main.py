@@ -10,6 +10,7 @@ import numpy as np
 import plotly.graph_objects as go
 from tqdm import tqdm
 from .model import KalmanFilter
+from docx import Document
 
 home = os.path.expanduser("~")
 filename = ".ligrc"
@@ -1004,3 +1005,141 @@ class PIMProcessor:
                     fig.show(renderer="browser")
                 else:
                     fig.show()
+
+
+class AbhishekReports:
+    """
+    Use this class to generate random shit reports for Abhishek
+    """
+
+    def __init(self):
+        self.document = Document()
+
+    def df_to_docx(
+        self,
+        data,
+        heading="Table data",
+        save=False,
+        file_name="Table data.docx",
+    ):
+        doc = self.document
+        df = data
+        doc.add_heading(heading, level=1)
+        # Add a table to the document
+        table = doc.add_table(rows=1, cols=len(df.columns))
+        table.style = "Table Grid"
+
+        # Add header row
+        header_cells = table.rows[0].cells
+        for idx, col_name in enumerate(df.columns):
+            header_cells[idx].text = col_name
+
+        # Add data rows
+        for _, row in df.iterrows():
+            row_cells = table.add_row().cells
+            for idx, value in enumerate(row):
+                row_cells[idx].text = str(np.round(value, decimals=4))
+        if save:
+            doc.save(file_name)
+
+    def correction_script(
+        fWlist,
+        model,
+        start_date,
+        end_date=None,
+        batch_size=30,
+        prefix="",
+        script="soc_range",
+    ):
+        """
+        def correction_script(fWlist, model, start_date, end_date=None, batch_size=30, prefix="", script='soc_range'):
+
+            Processes firmware data and generates correction reports.
+            Parameters:
+            fWlist (list): List of firmware versions to process.
+            model (object): Model object used for processing.
+            start_date (str): Start date for data processing.
+            end_date (str, optional): End date for data processing. Defaults to None.
+            batch_size (int, optional): Number of records to process in each batch. Defaults to 30.
+            prefix (str, optional): Prefix for battery data. Defaults to "".
+            script (str, optional): Type of script to run. Options are 'soc_range', 'max_error', or 'all'. Defaults to 'soc_range'.
+            Returns:
+            None
+            This function processes the firmware data for each firmware version in fWlist. It fetches and processes data in batches,
+            and generates correction reports based on the specified script type. The reports are saved as CSV files.
+        """
+
+        for fW in fWlist:
+            kdf = get_fwdata(fWVersion=fW, battery_prefix=prefix)
+            processor = PIMProcessor(model=model)
+            batch_size = batch_size
+            filepath = f"{fW}" + "soc_range" + ".csv"
+            filepath2 = f"{fW}" + ".csv"
+
+            sc = []
+            be = []
+            ct = []
+            ser = []
+            dev = []
+
+            for batch in tqdm(
+                range(0, kdf.shape[0], batch_size),
+                desc=f"Processing batch for {fW}",
+            ):
+                processor.fetch_and_process_data(
+                    kdf["imei"][batch : batch + batch_size],
+                    start_date=start_date,
+                    end_date=end_date,
+                    error_display=False,
+                )
+                processor.correction_monitor(plot=False)
+                if (script == "soc_range") or (script == "all"):
+                    for i in range(len(processor.soc_range)):
+                        sc.extend(processor.soc_range[i])
+                        be.extend(processor.bms_error[i])
+                        ct.extend(processor.correction_time[i])
+                        dev.extend(processor.deviation[i])
+                        ser.extend(
+                            [
+                                processor.serial_num[i]
+                                for o in range(len(processor.soc_range[i]))
+                            ]
+                        )
+                    df = pd.DataFrame(
+                        {
+                            "imei": ser,
+                            "bms_error": be,
+                            "correction_time": ct,
+                            "soc_range": sc,
+                            "deviation": dev,
+                        }
+                    )
+                    if not os.path.exists(filepath):
+                        df.to_csv(filepath, index=False)
+                    else:
+                        df.to_csv(filepath, mode="a", header=False, index=False)
+                elif (script == "all") or (script == "max_error"):
+                    max_error = pd.Series(
+                        [i.max() for i in processor.bms_error]
+                    )
+                    min_error = pd.Series(
+                        [i.min() for i in processor.bms_error]
+                    )
+                    average_error = pd.Series(
+                        [i.mean() for i in processor.bms_error]
+                    )
+                    imei = pd.Series(processor.serial_num)
+                    df = pd.DataFrame(
+                        {
+                            "imei": imei,
+                            "max_error": max_error,
+                            "min_error": min_error,
+                            "average_error": average_error,
+                        }
+                    )
+                    if not os.path.exists(filepath2):
+                        df.to_csv(filepath2, index=False)
+                    else:
+                        df.to_csv(
+                            filepath2, mode="a", header=False, index=False
+                        )
