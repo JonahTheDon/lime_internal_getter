@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.3.0] -2025-01-30
+
+### Fix
+ - Package Installation correction
+ - Change in model 9
+
+
+## [0.2.9] -2025-01-30
+
+### Fix
+ - correction_script method for AbhishekReports
+ - Improved readme examples
+
+## [0.2.8] -2025-01-30
+
+### Fix
+ - init function for class AbhishekReports
+
+### Added
+
+- small desciption for AbhishekReports
+- accessibility to AbhishekReports
+- Readme description update
+
+## [0.1.4] - 2025-01-21
+### Added
+- interpolation condition in pim_processor
+- python model runner 9
+
 ## [0.1.0] - 13-01-2025
 
 ### Added
@@ -26,36 +55,3 @@
 - Reduced accssible functions to 6
 - Improved documentation
 
-## [0.1.4] - 2025-01-21
-### Added
-- interpolation condition in pim_processor
-- python model runner 9
-
-## [0.2.7] -2025-01-30
-### Added
-- class Abhishek reports for generating reports
-- class PIMProcessor
-    - added parameters ,deviations and soc ranges as parameters
-- pyarrow,fastparquet and python-docx in requirements for package installation 
-
-### Fix
-
-- interpolation error issue of fetch_and_process_data in PIM_Processor when interpolation =True is used
-
-## [0.2.8] -2025-01-30
-
-### Fix
- - init function for class AbhishekReports
-
-### Added
-
-- small desciption for AbhishekReports
-- accessibility to AbhishekReports
-- Readme description update
-
-
-## [0.2.9] -2025-01-30
-
-### Fix
- - correction_script method for AbhishekReports
- - Improved readme examples

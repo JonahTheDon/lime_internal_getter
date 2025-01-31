@@ -54,9 +54,7 @@ class KalmanFilter:
             (F * initial_state) if (initial_state != 0) else (F + initial_state)
         )
         predicted_covariance = F * initial_covariance * F + Q
-        kalman_gain = (
-            predicted_covariance * H / (H * predicted_covariance * H + R)
-        )
+        kalman_gain = predicted_covariance * H / (H * predicted_covariance * H + R)
         if predicted_state > 1.03:
             predicted_state = 1.03
         if predicted_state < 0.0:
@@ -80,29 +78,23 @@ class KalmanFilter:
 
         """
         if self.model == 9:
-            if (
-                (measurement < 0.2)
-                or (
-                    (measurement > 0.6 and measurement < 0.65)
-                    and (0.55 < self.initial_state[cell_num] < 0.7)
+            if ((0.6 < measurement) and (measurement < 0.65)) or (measurement > 1.01):
+                self.__kf_key[cell_num] += abs(current / self.capacity) * (
+                    time_data / 3600
                 )
-                or (
-                    (measurement > 1.01)
-                    and (self.initial_state[cell_num] > 1.0)
-                )
-            ):
-                if 0.6 < measurement < 0.65 or (measurement > 1.01):
-                    self.__kf_key[cell_num] += abs(current / self.capacity) * (
-                        time_data / 3600
-                    )
+            if measurement < 0.2:
+                return True
 
-                if measurement < 0.2:
-                    self.__kf_key[cell_num] = 0
-                if self.__kf_key[cell_num] < (0.001):
+            elif (
+                (measurement > 0.6 and measurement < 0.65)
+                and (0.55 < self.initial_state[cell_num] < 0.7)
+            ) or ((measurement > 1.01) and (self.initial_state[cell_num] > 1.0)):
+                if self.__kf_key[cell_num] > (0.0):
                     return True
                 else:
                     return False
             else:
+                self.__kf_key[cell_num] = 0.0
                 return False
 
     def __model_recalibrator(self, voltages):
@@ -131,9 +123,7 @@ class KalmanFilter:
         soh_value=None,
         tune_parameters=None,
     ):
-        voltages_c = [
-            pim_df.iloc[:, p_col] for p_col in range(2, pim_df.shape[1])
-        ]
+        voltages_c = [pim_df.iloc[:, p_col] for p_col in range(2, pim_df.shape[1])]
         current_c = pim_df.iloc[:, 1]
         cumulative_time_c = pim_df.iloc[:, 0]
         cumulative_time = np.array(cumulative_time_c)
@@ -219,9 +209,7 @@ class KalmanFilter:
                     F = ((current[i - 1]) * time_data[i - 1]) / (
                         (self.capacity * self.__soh_value[c_no]) * 3600
                     )
-                filtercond = self.filter_conditions(
-                    current[i], res, c_no, time_data[i]
-                )
+                filtercond = self.filter_conditions(current[i], res, c_no, time_data[i])
                 resistances.append(res)
                 (
                     self.initial_state[c_no],

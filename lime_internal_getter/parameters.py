@@ -8,7 +8,7 @@ def get_model_9_params():
     return {
         "Q": np.float32(0.1),  # State transition matrix 1x1
         "H": np.float32(1),  # Observation matrix 1x1
-        "R": np.float32(4.71290239e9),  # Process noise covariance 1x1
+        "R": np.float32(8.51290239e12),  # Process noise covariance 1x1
         "x3": np.array(
             [
                 0.0,
