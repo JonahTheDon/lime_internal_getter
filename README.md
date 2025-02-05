@@ -140,7 +140,7 @@ print(kf.soh[0])# print soh for cell 1 corresponding to voltage 1
 ```
 ---
 
-### 8. **AbhishekReports** (Class)
+### 8. **Reports** (Class)
 **Description:** Class for generating reports and corrections scripts for different firmware versions
 
 **Methods:**
@@ -151,7 +151,7 @@ print(kf.soh[0])# print soh for cell 1 corresponding to voltage 1
 ```python
 import pandas as pd
 import lime_internal_getter as ig
-ar=ig.AbhishekReports()
+ar=ig.Reports()
 ar.df_to_docx(pd.DataFrame([1,2,3],[1.1,2.5,4.2]),save=True)
 fWlist=["51828"]
 ar.correction_script(fWlist,model=3,start_date="2025-01-21")

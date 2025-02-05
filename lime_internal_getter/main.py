@@ -11,6 +11,8 @@ import plotly.graph_objects as go
 from tqdm import tqdm
 from .model import KalmanFilter
 from docx import Document
+from sklearn.metrics import mean_squared_error
+import scipy.optimize
 
 home = os.path.expanduser("~")
 filename = ".ligrc"
@@ -114,9 +116,7 @@ def get_extdata(IMEI, start_time, end_time, filter_data=False):
         "Authorization": f"{auth_key}",
         "Content-Type": "application/json",
     }
-    payload = json.dumps(
-        {"imei": IMEI, "startDate": start_date, "endDate": end_date}
-    )
+    payload = json.dumps({"imei": IMEI, "startDate": start_date, "endDate": end_date})
     response = requests.post(
         "https://api-stage.lime.ai/lime/iotData", headers=headers, data=payload
     )
@@ -125,10 +125,7 @@ def get_extdata(IMEI, start_time, end_time, filter_data=False):
         if filter_data is True:
             df["timeStamp"] = pd.to_datetime(df["timeStamp"])
             df = (
-                df[
-                    (df["timeStamp"] >= start_time)
-                    & (df["timeStamp"] <= end_time)
-                ]
+                df[(df["timeStamp"] >= start_time) & (df["timeStamp"] <= end_time)]
             ).reset_index(drop=True)
         return df
     except Exception:
@@ -155,9 +152,7 @@ def get_pimdata(
         end_time,
     )
     df["Time diff"] = (
-        (pd.to_datetime(df["timeStamp"]).astype("int64") / 10**9)
-        .diff()
-        .fillna(0)
+        (pd.to_datetime(df["timeStamp"]).astype("int64") / 10**9).diff().fillna(0)
     )
     df["Cumulative Time"] = df["Time diff"].cumsum().fillna(0)
     col_names = [col for col in df.columns if "Volt" in col and "cell" in col]
@@ -170,9 +165,7 @@ def get_pimdata(
         for col in col_names:
             if not (df[col].eq(0).all()):
                 data.append(
-                    pd.Series(
-                        np.interp(time, df["Cumulative Time"], df[col] / 1000)
-                    )
+                    pd.Series(np.interp(time, df["Cumulative Time"], df[col] / 1000))
                 )
     else:
         data = [df["Cumulative Time"], df["batCurrent"]]
@@ -314,9 +307,7 @@ def filter_datas(df, start_time, end_time):
     )
 
 
-def get_datas(
-    imei, start_time, end_time=None, filter_data=False, skip=False, nas=True
-):
+def get_datas(imei, start_time, end_time=None, filter_data=False, skip=False, nas=True):
     """
     Use for getting battery data from NAS storage eg:
     df = get_data("MD0AIOALAA00638", '2024-10-25 14:30', '2024-10-26 02:17', filter_data=True)
@@ -490,6 +481,185 @@ MODEL_TYPE= {model}
         os.chdir(original_directory)
 
 
+def soh_calculator(df, capacity, x3, y3):
+    time_diff = df["Cumulative Time"].diff().fillna(0)
+    capacity = capacity  # Ah
+    soh = 1.0
+    timer = 0
+    cumu_ah = 0
+    prev_soc = np.interp(df["Voltage(V)"].iloc[0], y3, x3)
+    soc1 = prev_soc
+    for o in range(1, len(df)):
+        if df["Step Type"].iloc[o] == "Rest":
+            timer += time_diff.iloc[o]
+        else:
+            timer = 0
+        soc_diff = (df["Current(A)"].iloc[o] * time_diff.iloc[o] / 3600) / (
+            capacity * soh
+        )
+        soc1 += soc_diff
+        cumu_ah += df["Current(A)"].iloc[o] * time_diff.iloc[o] / 3600
+        if timer > 900 and abs(cumu_ah / capacity) > 0.5:
+            soc2 = np.interp(df["Voltage(V)"].iloc[o], y3, x3)
+            soh = abs(1 / ((((soc1 - soc2) * capacity) / (cumu_ah)) - (1 / soh)))
+            break
+    return soh
+
+
+def chromasoc_calculator(df, capacity, x3, y3, soh, initial_soc=None):
+    if initial_soc:
+        chromasoc = [initial_soc]
+    else:
+        chromasoc = [np.interp(df["Voltage(V)"].iloc[0], y3, x3)]
+    time_diff = df["Time diff"]
+    timer = 0
+    for o in range(1, len(df)):
+        if df["Step Type"].iloc[o] == "Rest":
+            timer += time_diff.iloc[o]
+        else:
+            timer = 0
+        soc_diff = (df["Current(A)"].iloc[o] * time_diff.iloc[o] / 3600) / (
+            capacity * soh
+        )
+        if timer > 900:
+            chromasoc.append(np.interp(df["Voltage(V)"].iloc[o], y3, x3))
+            timer = 0
+        else:
+            chromasoc.append(chromasoc[-1] + soc_diff)
+    return pd.Series(chromasoc) * 100
+
+
+def time_convert(x):
+    """
+    Converts a time string in the format "HH:MM:SS" to seconds
+
+    Parameters
+    ----------
+    x : str
+        The time string to convert
+
+    Returns
+    -------
+    int
+        The time in seconds
+    """
+    x1 = list(map(int, x.split(":")))
+    return x1[0] * 3600 + x1[1] * 60 + x1[2]
+
+
+def derive_etair(data, capacity, x3, y3, plot=False):
+    """
+    Derives the eta-IR model parameters from a given data set
+
+    Parameters
+    ----------
+    data : pandas.DataFrame
+        The data to derive the model from. Must contain columns 'Total Time', 'Current(A)', 'Step Type', 'Step Index', and 'Voltage(V)'
+    capacity : float
+        The capacity of the battery in Ah
+    x3 : numpy.ndarray
+        The SOC array for the OCV curve
+    y3 : numpy.ndarray
+        The OCV array for the OCV curve
+    plot : bool, optional
+        If True, plots the optimisation results for each discharge rate. Defaults to False
+
+    Returns
+    -------
+    tuple
+        A tuple containing the derived eta and internal resistance values
+    """
+    if isinstance(data, str):
+        data = pd.read_excel(data, sheet_name="record")
+    df = ((data[data["Step Index"] > 1].iloc[50:]).reset_index(drop=True)).copy()
+    df["Cumulative Time"] = df["Total Time"].apply(time_convert)
+    df["Cumulative Time"] = df["Cumulative Time"].diff().fillna(0).cumsum()
+    df["Time diff"] = df["Cumulative Time"].diff().fillna(0)
+    capacity = capacity  # Ah
+    soh = soh_calculator(df, capacity, x3, y3)
+    print("Derived SOH: ", soh)
+    df["ChromaSOC"] = chromasoc_calculator(df, capacity, x3, y3, soh)
+    current = df["Current(A)"]
+    current_df = df[current < 0].copy()
+    soc_rates = (current_df["Current(A)"] / 15).round(decimals=2).unique()
+    current_df["soc_rates"] = (current_df["Current(A)"] / 15).round(decimals=2)
+    x3_dv = np.arange(0, 1.0, 0.01)
+    y3_dv = np.interp(x3_dv, x3, y3)
+    y3_diff = np.diff(y3_dv, prepend=1.0) / np.diff(x3_dv, prepend=1.0)
+    eta_ir = []
+    j0 = []
+    for s in soc_rates:
+        soc_df = current_df[current_df["soc_rates"] == s].copy()
+        soc_df["dv"] = np.interp(soc_df["ChromaSOC"] / 100, x3_dv, y3_diff)
+        derive_df = soc_df[soc_df["dv"] > 0.5]
+
+        def error(params):
+            global soc_noise
+            a, b = abs(params)
+            r1 = a * 0.001 * ((derive_df["Current(A)"] / 1) / (capacity * soh))
+            r2 = ((2 * 8.314462618 * (298.15)) / 96485.33212) * np.arcsinh(
+                (derive_df["Current(A)"] / 1) / (2 * (1 / b) * (capacity * soh))
+            )
+            soc_noise = np.interp(derive_df["Voltage(V)"] - (r1 + r2), y3, x3)
+            soc_noise = [o * 100 for o in soc_noise]
+            return (
+                np.sqrt(
+                    mean_squared_error(pd.Series(soc_noise), derive_df["ChromaSOC"])
+                )
+                * 1000
+            )
+
+        a_guess = 10
+        b_guess = 0.1
+        res = scipy.optimize.minimize(
+            error,
+            [
+                a_guess,
+                b_guess,
+            ],  # ,bounds=[(1.61880320e+02,2.12495519e+02),(9.42777888e-02,1.04222729e-01)],
+            method="Powell",  # optimising for process noises and covariances
+        )
+        eta_ir.append(res.x[0])
+        j0.append(res.x[1])
+        if plot:
+            print(res.x, end=" ")
+            print(error(res.x) / 1000)
+            fig = go.Figure()
+            fig.add_trace(
+                go.Scatter(
+                    x=derive_df["Cumulative Time"],
+                    y=soc_noise,
+                    name="optimised R",
+                    line=dict(dash="solid"),
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=derive_df["Cumulative Time"],
+                    y=derive_df["ChromaSOC"],
+                    name="Chroma",
+                    line=dict(dash="dot"),
+                    mode="markers",
+                )
+            )
+            fig.update_layout(dict(title=f"optimisation for c_rate {s}"))
+            fig.show(renderer="browser")
+    if plot:
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=abs(soc_rates), y=eta_ir, mode="markers"))
+        fig.update_layout(
+            title="Derived eta IR", xaxis_title="C-rates", yaxis_title="Eta-IR"
+        )
+        fig.show(renderer="browser")
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=abs(soc_rates), y=j0, mode="markers"))
+        fig.update_layout(
+            title="Derived invJ0", xaxis_title="C-rates", yaxis_title="inv J0"
+        )
+        fig.show(renderer="browser")
+    return (eta_ir, j0)
+
+
 class PIMProcessor:
     """
     Use this for processing the model and generating tables for lists of batteries.
@@ -529,9 +699,7 @@ class PIMProcessor:
         if not end_date:
             end_date = start_date
         k = 0
-        for ser in tqdm(
-            serial_numbers, desc="Processing Serial Numbers", leave=False
-        ):
+        for ser in tqdm(serial_numbers, desc="Processing Serial Numbers", leave=False):
             params = (ser, start_date, end_date)
             if self.directory_path:
                 pim_df = get_pimdata(
@@ -561,8 +729,7 @@ class PIMProcessor:
                 try:
                     if fw:
                         if any(
-                            firmware not in fw
-                            for firmware in df.fwVersion.unique()
+                            firmware not in fw for firmware in df.fwVersion.unique()
                         ):
                             raise ValueError("Firmware version not detected")
                 except Exception as e:
@@ -607,9 +774,7 @@ class PIMProcessor:
                         minn_soc,
                     )
                 except Exception as e:
-                    print(
-                        f"Error reading final_soc_iot_data.csv for {ser}: {e}"
-                    )
+                    print(f"Error reading final_soc_iot_data.csv for {ser}: {e}")
 
                 # 5) Read final_soh_iot_data.csv
                 try:
@@ -636,9 +801,7 @@ class PIMProcessor:
                         minn_soh,
                     )
                 except Exception as e:
-                    print(
-                        f"Error reading final_soh_iot_data.csv for {ser}: {e}"
-                    )
+                    print(f"Error reading final_soh_iot_data.csv for {ser}: {e}")
             # Convert back to real timestamps and keep track of serial number
             df["Cumulative Time"] = pd.to_datetime(time_data, unit="s")
             df["Serial_no"] = ser
@@ -710,9 +873,7 @@ class PIMProcessor:
                 self.final_table = table[needed_cols]
                 k += 1
             else:
-                self.final_table = pd.concat(
-                    [self.final_table, table[needed_cols]]
-                )
+                self.final_table = pd.concat([self.final_table, table[needed_cols]])
 
         if save_csv and self.final_table is not None:
             self.final_table.to_csv(
@@ -840,14 +1001,10 @@ class PIMProcessor:
             if df1.shape[0] == 0:
                 return serial_num, None, None
         except KeyError:
-            print(
-                f"Skipping for {serial_num} for error calculation due data error"
-            )
+            print(f"Skipping for {serial_num} for error calculation due data error")
             return serial_num, None, None
         df1["Time diff"] = (
-            (pd.to_datetime(df1["timeStamp"]).astype("int64") / 10**9)
-            .diff()
-            .fillna(0)
+            (pd.to_datetime(df1["timeStamp"]).astype("int64") / 10**9).diff().fillna(0)
         )
         time_data = pd.to_datetime(df1["timeStamp"]).astype("int64") / 10**9
         if self.directory_path:
@@ -1007,9 +1164,9 @@ class PIMProcessor:
                     fig.show()
 
 
-class AbhishekReports:
+class Reports:
     """
-    A class to generate reports for Abhishek.
+    A class to generate reports.
     Methods
     -------
     df_to_docx(data, heading="Table data", save=False, file_name="Table data.docx")
@@ -1126,15 +1283,9 @@ class AbhishekReports:
                     else:
                         df.to_csv(filepath, mode="a", header=False, index=False)
                 elif (script == "all") or (script == "max_error"):
-                    max_error = pd.Series(
-                        [i.max() for i in processor.bms_error]
-                    )
-                    min_error = pd.Series(
-                        [i.min() for i in processor.bms_error]
-                    )
-                    average_error = pd.Series(
-                        [i.mean() for i in processor.bms_error]
-                    )
+                    max_error = pd.Series([i.max() for i in processor.bms_error])
+                    min_error = pd.Series([i.min() for i in processor.bms_error])
+                    average_error = pd.Series([i.mean() for i in processor.bms_error])
                     imei = pd.Series(processor.serial_num)
                     df = pd.DataFrame(
                         {
@@ -1147,6 +1298,4 @@ class AbhishekReports:
                     if not os.path.exists(filepath2):
                         df.to_csv(filepath2, index=False)
                     else:
-                        df.to_csv(
-                            filepath2, mode="a", header=False, index=False
-                        )
+                        df.to_csv(filepath2, mode="a", header=False, index=False)
