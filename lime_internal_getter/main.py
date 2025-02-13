@@ -569,6 +569,7 @@ def derive_etair(data, capacity, x3, y3, plot=False):
     tuple
         A tuple containing the derived eta and internal resistance values
     """
+    string = data
     if isinstance(data, str):
         data = pd.read_excel(data, sheet_name="record")
     df = ((data[data["Step Index"] > 1].iloc[50:]).reset_index(drop=True)).copy()
@@ -657,6 +658,7 @@ def derive_etair(data, capacity, x3, y3, plot=False):
             title="Derived invJ0", xaxis_title="C-rates", yaxis_title="inv J0"
         )
         fig.show(renderer="browser")
+    data = string
     return (eta_ir, j0)
 
 
@@ -1024,14 +1026,54 @@ class PIMProcessor:
         error2 = []
         soc_range = []
         dev = []
+        cycle = []
+        start_time = []
+        cumulative_charge_at_start = []
+        cumulative_charge_at_end = []
+        cumulative_discharge_at_start = []
+        cumulative_discharge_at_end = []
+        bms_true_soc_at_start = []
+        bms_true_soc_at_end = []
+        cell3soc_at_start = []
+        cell3soc_at_end = []
+        soc_percent_e_at_start = []
+        soc_percent_e_at_end = []
+        start_t = None
+        bms_true_soc_s = None
+        cell3soc_s = None
+        cumulative_charge_s = None
+        cumulative_discharge_s = None
+        soc_percent_e_s = None
+        point_of_interest = False
         for o in range(df1.shape[0] - devi):
             if abs(df1["batCurrent"].iloc[o]) < 0.5:
                 timer += df1["Time diff"].iloc[o]
+                if (not start_t) and point_of_interest:
+                    start_t = df1["timeStamp"].iloc[o]
+                    bms_true_soc_s = df1["trueSoc"].iloc[o]
+                    cell3soc_s = df1["cellSoc3E"].iloc[o]
+                    cumulative_charge_s = df1["cummulativeCharge"].iloc[o]
+                    cumulative_discharge_s = df1["cummulativeDischarge"].iloc[o]
+                    soc_percent_e_s = df1["socPercentE"].iloc[o]
             else:
+                point_of_interest = True
+                start_t = None
+                bms_true_soc_s = None
+                cell3soc_s = None
+                cumulative_charge_s = None
+                cumulative_discharge_s = None
+                soc_percent_e_s = None
                 timer = 0
-            if timer > 900 and (
-                ((df1["trueSoc"].iloc[o] - df1["trueSoc"].iloc[o + 10]) > 0.05)
-                and (abs(df1["batCurrent"].iloc[o + 10]) < 0.5)
+            if (
+                timer > 3600
+                and
+                # one hour rest
+                (
+                    (
+                        df1["trueSoc"].iloc[o] > 0.05
+                    )  # checking whether data loss is there
+                    and (abs(df1["batCurrent"].iloc[o]) < 0.5)
+                )  # double checking battery current at the point
             ):
                 if self.directory_path:
                     if self.__correction_conditions(
@@ -1074,21 +1116,24 @@ class PIMProcessor:
 
                 else:
                     if self.__correction_conditions(
-                        df1["trueSoc"].iloc[o + 10],
-                        df1["cellSoc3E"].iloc[o + 10],
+                        df1["cellSoc3E"].iloc[o],
+                        df1["cellSoc3E"].iloc[o],  # checking whether 20% below for lfp
                     ) and (
-                        df1["trueSoc"].iloc[o + 10] != 0
-                        and df1["cellSoc3E"].iloc[o + 10] != 0
+                        df1["trueSoc"].iloc[o + 1] != 0
+                        and df1["cellSoc3E"].iloc[o]
+                        != 0  # these conditions check for data loss
                         and df1["trueSoc"].iloc[o] != 0
+                        and point_of_interest
                     ):
                         for soc_c in soc_cat:
-                            if df1["trueSoc"].iloc[o + 10] <= soc_c:
-                                soc_range.append(int(soc_c))
+                            if df1["cellSoc3E"].iloc[o] <= soc_c:
+                                soc_range.append(int(soc_c))  # soc range calculation
                                 error1.append(
-                                    df1["trueSoc"].iloc[o + 10]
-                                    - df1["cellSoc3E"].iloc[o]
+                                    abs(
+                                        cell3soc_s - df1["cellSoc3E"].iloc[o]
+                                    )  # error calculation
                                 )
-                                time1.append(df1["timeStamp"].iloc[o])
+                                time1.append(df1["timeStamp"].iloc[o])  # end time
                                 time_dev = (
                                     pd.to_datetime(
                                         df1["timeStamp"].iloc[o + devi]
@@ -1102,9 +1147,49 @@ class PIMProcessor:
                                     )
                                     / time_dev
                                 )
+                                cycle.append(df1["dischargeCycle"].iloc[o])
+                                start_time.append(start_t)
+                                bms_true_soc_at_start.append(bms_true_soc_s)
+                                bms_true_soc_at_end.append(df1["trueSoc"].iloc[o])
+                                cell3soc_at_start.append(cell3soc_s)
+                                cell3soc_at_end.append(df1["cellSoc3E"].iloc[o])
+                                cumulative_discharge_at_start.append(
+                                    cumulative_discharge_s
+                                )
+                                cumulative_charge_at_start.append(cumulative_charge_s)
+                                cumulative_charge_at_end.append(
+                                    df1["cummulativeCharge"].iloc[o]
+                                )
+                                cumulative_discharge_at_end.append(
+                                    df1["cummulativeDischarge"].iloc[o]
+                                )
+                                soc_percent_e_at_start.append(soc_percent_e_s)
+                                soc_percent_e_at_end.append(df1["socPercentE"].iloc[o])
+                                timer = 0
+                                start_t = None
+                                point_of_interest = False
                                 break
 
-        return serial_num, error1, error2, time1, soc_range, dev
+        return (
+            serial_num,
+            error1,
+            error2,
+            time1,
+            soc_range,
+            dev,
+            cycle,
+            start_time,
+            bms_true_soc_at_start,
+            bms_true_soc_at_end,
+            cell3soc_at_start,
+            cell3soc_at_end,
+            cumulative_charge_at_start,
+            cumulative_charge_at_end,
+            cumulative_discharge_at_start,
+            cumulative_discharge_at_end,
+            soc_percent_e_at_start,
+            soc_percent_e_at_end,
+        )
 
     def correction_monitor(self, renderer="browser", plot=True, deviation=200):
         """
@@ -1116,6 +1201,19 @@ class PIMProcessor:
         self.serial_num = []
         self.soc_range = []
         self.deviation = []
+        self.cycle = []
+        self.start_time = []
+        self.bms_true_soc_start = []
+        self.bms_true_soc_end = []
+        self.cell3soc_at_start = []
+        self.cell3soc_at_end = []
+        self.cumulative_charge_at_start = []
+        self.cumulative_charge_at_end = []
+        self.cumulative_discharge_at_start = []
+        self.cumulative_discharge_at_end = []
+        self.soc_percent_e_at_start = []
+        self.soc_percent_e_at_end = []
+
         for ser in tqdm(
             self.fdf["Serial_no"].unique(),
             desc="Calculating corrections for serial numbers",
@@ -1130,6 +1228,19 @@ class PIMProcessor:
                 self.serial_num.append(ser)
                 self.soc_range.append(pd.Series(result[4]))
                 self.deviation.append(pd.Series(result[5]))
+                self.cycle.append(pd.Series(result[6]))
+                self.start_time.append(pd.Series(result[7]))
+                self.bms_true_soc_start.append(pd.Series(result[8]))
+                self.bms_true_soc_end.append(pd.Series(result[9]))
+                self.cell3soc_at_start.append(pd.Series(result[10]))
+                self.cell3soc_at_end.append(pd.Series(result[11]))
+                self.cumulative_charge_at_start.append(pd.Series(result[12]))
+                self.cumulative_charge_at_end.append(pd.Series(result[13]))
+                self.cumulative_discharge_at_start.append(pd.Series(result[14]))
+                self.cumulative_discharge_at_end.append(pd.Series(result[15]))
+                self.soc_percent_e_at_start.append(pd.Series(result[16]))
+                self.soc_percent_e_at_end.append(pd.Series(result[17]))
+
             if plot and result[1]:
                 fig = go.Figure(
                     layout=dict(

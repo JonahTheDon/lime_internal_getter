@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from .parameters import get_model_9_params
+from . import parameters as params
 from .resistance import resistance_calculation
 from . import soh
 from . import interpolate as ip
@@ -11,7 +11,7 @@ class KalmanFilter:
         self.model = model
         if self.model == 9:  # GangFeng 100Ah LFP parameters
             # Load parameters for model=9
-            params_9 = get_model_9_params()
+            params_9 = params.get_model_9_params()
             self.Q = params_9["Q"]
             self.H = params_9["H"]
             self.R = params_9["R"]
@@ -23,6 +23,24 @@ class KalmanFilter:
             self.__soh_value = [1.0 for i in range(int(self.num_cells_series))]
             self.__kf_key = [0.0 for i in range(int(self.num_cells_series))]
             self.__recal_flag = False
+        if self.model == 3:  # CBAK 15Ah LFP parameters
+            params_3 = params.get_model_3_params()
+            self.Q = params_3["Q"]
+            self.H = params_3["H"]
+            self.R = params_3["R"]
+            self.x3 = params_3["x3"]
+            self.y3 = params_3["y3"]
+            self.capacity = params_3["capacity"]
+            self.num_cells_parallel = params_3["num_cells_parallel"]
+            self.num_cells_series = params_3["num_cells_series"]
+            self.__soh_value = [1.0 for i in range(int(self.num_cells_series))]
+            self.__kf_key = [0.0 for i in range(int(self.num_cells_series))]
+            self.__recal_flag = False
+            self.x3_dv = np.arange(0.0, 1.0, 0.01)
+            y3_dv = np.interp(self.x3_dv, self.x3, self.y3)
+            self.y3_diff = np.diff(y3_dv, prepend=1.0) / np.diff(
+                self.x3_dv, prepend=1.0
+            )
 
     def update_kalman_filter(
         self,
@@ -96,18 +114,34 @@ class KalmanFilter:
             else:
                 self.__kf_key[cell_num] = 0.0
                 return False
+        if self.model == 3:
+            if np.interp(measurement, self.x3_dv, self.y3_diff) > 0.5:
+                return True
+            else:
+                return False
 
     def __model_recalibrator(self, voltages):
         if self.model == 9 or self.model == 6:
             reflag = True
             for ce in voltages:
-                if not ((ce < 3.25) and (ce > 3.35)):
+                if (ce > 3.25) and (ce < 3.39):
+                    reflag = False
+                    break
+            if reflag:
+                self.__recal_flag = True
+
+        elif self.model == 3:
+            reflag = True
+            for ce in voltages:
+                if not ((ce < 3.2) and (ce > 3.35)):
+                    # Different condition for CBAK since ocv curve flat after 7%
                     reflag = False
                     break
             if reflag:
                 self.__recal_flag = True
         else:
             self.__recal_flag = True
+
         if self.__recal_flag:
             for c_no in range(len(voltages)):
                 self.initial_state[c_no] = np.float32(

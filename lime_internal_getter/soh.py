@@ -2,9 +2,7 @@ import numpy as np
 
 
 class SOHEstimator:
-    def __init__(
-        self, num_cells_series, num_cells_parallel, capacity, soh=None
-    ):
+    def __init__(self, num_cells_series, num_cells_parallel, capacity, soh=None):
         self.num_cells_series = num_cells_series
         self.num_cells_parallel = num_cells_parallel
         self.capacity = capacity
@@ -22,11 +20,9 @@ class SOHEstimator:
         self.__soc1 = [None for i in range(int(self.num_cells_series))]
         self.__soc2 = [None for i in range(int(self.num_cells_series))]
 
-    def soh_estimator(
-        self, current, time_diff, voltage, recal_flag, initial_state
-    ):
+    def soh_estimator(self, current, time_diff, voltage, recal_flag, initial_state):
         cellcurr = np.float32(current) / self.num_cells_parallel
-        self.__cumu_ah = self.__cumu_ah + (cellcurr * time_diff)
+        self.__cumu_ah = self.__cumu_ah + (cellcurr * time_diff) / 3600
         if self.__ah1 == 0.0 and self.__ah2 == 0.0 and (self.__wait_flag == 0):
             if self.__check_key == 0:
                 self.__check_key = 1
@@ -35,6 +31,7 @@ class SOHEstimator:
                     if self.__prev_soh[j]:
                         self.soh[j] = self.__prev_soh[j]
         if recal_flag:
+            print("recal_flag is true")
             for j in range(int(self.num_cells_series)):
                 if np.float32(voltage[j]) != 0:
                     self.__check_key1 = True
@@ -47,6 +44,7 @@ class SOHEstimator:
                     self.__ah2 = 0.0
 
             if self.__check_key1:
+                print("check key 1 passed")
                 if self.__wait_flag == 0:
                     self.__ah1 = self.__cumu_ah
                     for j in range(int(self.num_cells_series)):
@@ -54,20 +52,33 @@ class SOHEstimator:
                     self.__wait_flag = 1
 
                 elif self.__wait_flag == 1:
+                    print("wait_flag 1 passed")
                     self.__ah2 = self.__cumu_ah
                     for j in range(int(self.num_cells_series)):
                         self.__soc2[j] = initial_state[j]
 
-                    if abs(self.__ah1 - self.__ah2) > (
-                        (self.capacity * 3600) / 2
-                    ):
+                    if abs(self.__ah1 - self.__ah2) > ((self.capacity) / 3):
                         for j in range(int(self.num_cells_series)):
                             self.soh[j] = abs(
                                 (
                                     (self.__ah2 - self.__ah1)
                                     / (self.__soc2[j] - self.__soc1[j])
                                 )
-                            ) / (self.capacity * 3600)
+                            ) / (self.capacity)
+                            print(
+                                "soh calculated for cell ",
+                                j,
+                                " is ",
+                                self.soh[j],
+                                " and soc1 is ",
+                                self.__soc1[j],
+                                " and soc2 is ",
+                                self.__soc2[j],
+                                " and ah1 is ",
+                                self.__ah1,
+                                " and ah2 is ",
+                                self.__ah2,
+                            )
 
                             self.__prev_soh[j] = self.soh[j]
                         self.__wait_flag = 0

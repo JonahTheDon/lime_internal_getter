@@ -152,6 +152,80 @@ def eta_IR_model(model):
             ]
         )
         return ecirs, ejs, edirs, edjs, c_rates, dc_rates
+    if model == 3:
+        edirs = np.array(
+            [
+                315,
+                246.6443328749824,
+                206.69526588300542,
+                193.83939234880887,
+                187.14643428767425,
+                180.8131981494039,
+                174.7658450399559,
+                167.3501064006345,
+                163.97910336754268,
+                159.51354534078413,
+                156.62208794982794,
+                153.0108716440943,
+                149.23508636207012,
+                143.1705938749443,
+                146.06947481040604,
+                144.46026589916838,
+                135.4204603057264,
+                140.82055192981346,
+                127.45927535999786,
+                124.18127478380585,
+            ]
+        )
+        edjs = np.array(
+            [
+                0.12890112470591858,
+                0.15761517578042164,
+                0.08377578341813284,
+                0.07187502162691534,
+                0.07044679408950937,
+                0.10149115388869123,
+                0.09168808822073447,
+                0.09057498912963492,
+                0.08512090338967804,
+                0.09294291796200087,
+                0.11182766660952792,
+                0.11772096518175065,
+                0.13288420014519264,
+                0.12586723107830425,
+                0.08653461667470366,
+                0.08710358939989729,
+                0.0919802722660857,
+                0.08591508072160256,
+                0.12423848223291523,
+                0.10124370509197245,
+            ]
+        )
+        dc_rates = np.array(
+            [
+                0.05,
+                0.1,
+                0.15,
+                0.2,
+                0.25,
+                0.3,
+                0.35,
+                0.4,
+                0.45,
+                0.5,
+                0.55,
+                0.6,
+                0.65,
+                0.7,
+                0.75,
+                0.8,
+                0.85,
+                0.9,
+                0.95,
+                1.0,
+            ]
+        )
+        return None, None, edirs, edjs, None, dc_rates
     return None, None, None, None, None, None
 
 
@@ -190,9 +264,7 @@ def resistance_calculation(params, voltage, current, cell_num, soh, model):
                     )
                 )
                 - (
-                    ip.interp(
-                        current / (capacity * soh[cell_num]), c_rates, ecirs
-                    )
+                    ip.interp(current / (capacity * soh[cell_num]), c_rates, ecirs)
                     * 0.001
                     * (current / capacity * soh[cell_num])
                 )
@@ -226,5 +298,37 @@ def resistance_calculation(params, voltage, current, cell_num, soh, model):
                     * (current / (capacity * soh[cell_num]))
                 )
             )
+        return ocv
+    if model == 3:
+        ecirs, ejs, edirs, edjs, c_rates, dc_rates = eta_IR_model(model)
+        capacity = params["capacity"]
+        ocv = (
+            voltage
+            - (
+                (2 * R_const * T / F_const)
+                * np.arcsinh(
+                    current
+                    / (
+                        2
+                        * ip.interp(
+                            abs(current / (capacity * soh[cell_num])),
+                            dc_rates,
+                            edjs,
+                        )
+                        * capacity
+                        * soh[cell_num]
+                    )
+                )
+            )
+            - (
+                ip.interp(
+                    abs(current / (capacity * soh[cell_num])),
+                    dc_rates,
+                    edirs,
+                )
+                * 0.001
+                * (current / (capacity * soh[cell_num]))
+            )
+        )
         return ocv
     return voltage
