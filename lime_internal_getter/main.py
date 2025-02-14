@@ -1045,7 +1045,15 @@ class PIMProcessor:
         cumulative_discharge_s = None
         soc_percent_e_s = None
         point_of_interest = False
+        point_of_interest2 = False
         for o in range(df1.shape[0] - devi):
+            if (timer >= 1800 and timer < 10800) and (
+                abs(df1["batCurrent"].iloc[o + 2]) > 0.5
+                and df1["trueSoc"].iloc[o + 2] != 0
+            ):
+                point_of_interest2 = True
+            else:
+                point_of_interest2 = False
             if abs(df1["batCurrent"].iloc[o]) < 0.5:
                 timer += df1["Time diff"].iloc[o]
                 if (not start_t) and point_of_interest:
@@ -1065,7 +1073,7 @@ class PIMProcessor:
                 soc_percent_e_s = None
                 timer = 0
             if (
-                timer > 3600
+                (timer >= 10800 or point_of_interest2)
                 and
                 # one hour rest
                 (
